@@ -90,7 +90,7 @@ def get_monitoring_config():
         config = {
             "type": "monitoring_rules",
             "parent_email": "",  # Insert default email here.
-            "monitoring_prompt": "My son can use youtube.com , mangadex.com and other such internet websites. But do not allow any explicit content. Block content on a case by case basis. Adiditionally do not allow him to watch world war 2 videos or any call of duty videos.",
+            "monitoring_prompt": "Block mangadex  only. But allow him to access the site if he says he wants to read One punch man.",
             "agent_can_auto_approve": True,
             "desktop_monitoring_enabled": True,
             "screenshot_interval": 120,
@@ -446,7 +446,7 @@ appeal_agent = Agent(
 
 async def evaluate_appeal_with_llm(link, title, previous_evaluation_reason  , appeal_reason, monitoring_prompt):
     try:
-        prompt = prompts.web_analysis_prompt.format(
+        prompt = prompts.appeals_prompt.format(
             parental_prompt=monitoring_prompt,
                 url=link,
                 title=title,
