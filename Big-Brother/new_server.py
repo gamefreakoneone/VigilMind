@@ -510,7 +510,7 @@ def submit_appeal():
         "status": "pending",
     })
 
-    decision = evaluate_appeal_with_llm(link, title, entry["reason"],  appeal_reason, config["monitoring_prompt"])
+    decision = asyncio.run(evaluate_appeal_with_llm(link, title, entry["reason"],  appeal_reason, config["monitoring_prompt"]))
     # expected shape: {"should_auto_approve": True/False, "reason": "..."}
 
     # 5. Mark that an appeal was used, and log the result

@@ -249,22 +249,23 @@ function showBlockPageWithAppeal(reason) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               url: window.location.href,
+              title: document.title,
               appeal_reason: reason
             })
           })
           .then(response => response.json())
           .then(data => {
             if (data.status === 'approved') {
-              statusDiv.textContent =  + data.message;
+              statusDiv.textContent = 'Appeal approved! ' + data.reason;
               statusDiv.className = 'status-message show success';
-              
+
               if (data.reload) {
                 setTimeout(() => {
                   window.location.reload();
                 }, 2000);
               }
             } else {
-              statusDiv.textContent =  data.message;
+              statusDiv.textContent = data.reason;
               statusDiv.className = 'status-message show pending';
             }
           })
