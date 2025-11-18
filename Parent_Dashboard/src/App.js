@@ -34,6 +34,28 @@ function App() {
     loadData();
   }, []);
 
+  // Auto-refresh pending approvals and domain lists every 5 seconds
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      try {
+        const [whitelistRes, blacklistRes, approvalsRes] = await Promise.all([
+          axios.get(`${API_BASE}/whitelist`),
+          axios.get(`${API_BASE}/blacklist`),
+          axios.get(`${API_BASE}/pending-approvals`),
+        ]);
+
+        setExistingWhitelist(whitelistRes.data || []);
+        setExistingBlacklist(blacklistRes.data || []);
+        setPendingApprovals(approvalsRes.data || []);
+      } catch (error) {
+        console.error('Error refreshing data:', error);
+      }
+    }, 5000); // Refresh every 5 seconds
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(refreshInterval);
+  }, []);
+
   const loadData = async () => {
     try {
       setLoading(true);
