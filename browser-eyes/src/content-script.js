@@ -85,11 +85,13 @@ function extractAndSend() {
     .then((response) => response.json())
     .then((data) => {
       console.log("Analysis result:", data);
-      
+
       if (data.action === 'block') {
-        // This needs to be modified
-        if (data.appeal_enabled) {  // And also check if appeals is not more than 0 .
-          showBlockPageWithAppeal(data.reason);
+        // Check if appeals are enabled AND haven't been used yet (max 1 appeal)
+        const canAppeal = data.appeal_enabled && (data.appeals_used || 0) < 1;
+
+        if (canAppeal) {
+          showBlockPageWithAppeal(data.reason, data.appeals_used || 0);
         } else {
           blockPage(data.reason);
         }
@@ -104,7 +106,8 @@ function extractAndSend() {
     });
 }
 
-function showBlockPageWithAppeal(reason) {
+function showBlockPageWithAppeal(reason, appealsUsed = 0) {
+  console.log('showBlockPageWithAppeal called with reason:', reason, 'appealsUsed:', appealsUsed);
   document.documentElement.innerHTML = `
     <!DOCTYPE html>
     <html>
@@ -224,8 +227,8 @@ function showBlockPageWithAppeal(reason) {
           <h2>Need this website?</h2>
           <p style="font-size: 16px; opacity: 0.9;">Explain why you need access and it will be reviewed</p>
           <textarea id="appeal-reason" placeholder="Example: I need this website for my science homework assignment on climate change"></textarea>
-          <button onclick="submitAppeal()">Submit Appeal</button>
-          <button class="secondary" onclick="history.back()">Go Back</button>
+          <button id="submit-btn" onclick="submitAppeal()">Submit Appeal</button>
+          <button id="back-btn" class="secondary" onclick="history.back()">Go Back</button>
         </div>
         
         <div id="status-message" class="status-message"></div>
@@ -233,17 +236,30 @@ function showBlockPageWithAppeal(reason) {
       
       <script>
         function submitAppeal() {
+          console.log('submitAppeal() called');
           const reason = document.getElementById('appeal-reason').value.trim();
-          
+
           if (!reason) {
             alert('Please explain why you need this website');
             return;
           }
-          
+
+          // Disable the form elements immediately
+          const textarea = document.getElementById('appeal-reason');
+          const submitBtn = document.getElementById('submit-btn');
+          const backBtn = document.getElementById('back-btn');
+
+          textarea.disabled = true;
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+          submitBtn.style.cursor = 'not-allowed';
+
           const statusDiv = document.getElementById('status-message');
           statusDiv.textContent = 'Submitting appeal...';
           statusDiv.className = 'status-message show pending';
-          
+
+          console.log('Sending appeal request to server...');
+
           fetch('http://localhost:5000/appeal', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -253,8 +269,13 @@ function showBlockPageWithAppeal(reason) {
               appeal_reason: reason
             })
           })
-          .then(response => response.json())
+          .then(response => {
+            console.log('Received response:', response);
+            return response.json();
+          })
           .then(data => {
+            console.log('Appeal response data:', data);
+
             if (data.status === 'approved') {
               statusDiv.textContent = 'Appeal approved! ' + data.reason;
               statusDiv.className = 'status-message show success';
@@ -265,13 +286,28 @@ function showBlockPageWithAppeal(reason) {
                 }, 2000);
               }
             } else {
+              // Appeal is pending parent approval
               statusDiv.textContent = data.reason;
               statusDiv.className = 'status-message show pending';
+
+              // Hide the textarea and submit button since appeal is submitted
+              textarea.style.display = 'none';
+              submitBtn.style.display = 'none';
+
+              // Update the back button text
+              backBtn.textContent = 'Return to Previous Page';
             }
           })
           .catch(error => {
-            statusDiv.textContent = 'Error submitting appeal';
+            console.error('Error submitting appeal:', error);
+            statusDiv.textContent = 'Error submitting appeal. Please try again.';
             statusDiv.className = 'status-message show';
+
+            // Re-enable form on error
+            textarea.disabled = false;
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
           });
         }
       </script>
