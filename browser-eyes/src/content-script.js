@@ -68,7 +68,14 @@ function removeLoadingScreen() {
 function extractAndSend() {
   console.log("extractAndSend called for:", window.location.href);
   const documentClone = document.cloneNode(true);
-  const article = new Readability(documentClone).parse();
+
+  let article = null;
+  try {
+    article = new Readability(documentClone).parse();
+  } catch (error) {
+    console.warn("Readability parsing failed, using fallback content extraction:", error.message);
+    // article remains null, will use fallback content below
+  }
 
   const pageData = {
     url: window.location.href,
