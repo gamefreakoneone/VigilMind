@@ -177,22 +177,41 @@ def send_approval_request_email(approval_id: str, link: str, appeal_reason: str)
         blacklist_entry = blacklist_col.find_one({"link": link})
         blocking_reason = blacklist_entry.get("reason", "Not specified") if blacklist_entry else "Not specified"
 
+        # Check if this was escalated from AI
+        pending_approval = pending_approvals_col.find_one({"approval_id": approval_id})
+        escalated_from_ai = pending_approval.get("escalated_from_ai", False) if pending_approval else False
+        ai_decision = pending_approval.get("ai_decision", "") if pending_approval else ""
+
         gmail = get_gmail_agent()
 
         subject = f"VigilMind: Approval Needed [{approval_id}]"
+
+        # Build AI decision section if escalated
+        ai_section = ""
+        if escalated_from_ai and ai_decision:
+            ai_section = f"""
+            <div style="background-color: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f44336;">
+                <h3 style="color: #c62828; margin-top: 0;">AI Agent's Decision</h3>
+                <p>Our AI agent initially reviewed this appeal and decided to keep it blocked.</p>
+                <p><strong>AI's Reasoning:</strong> {ai_decision}</p>
+                <p style="font-size: 14px; color: #666; margin-top: 10px;">Your child has requested that you review this decision personally.</p>
+            </div>
+            """
 
         body = f"""
         <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
             <h2 style="color: #FF9800;">Approval Request from Your Child</h2>
 
-            <p>Your child has submitted an appeal for a blocked website. The AI agent needs your decision on whether to approve this request.</p>
+            <p>Your child has submitted an appeal for a blocked website{' and is requesting your personal review' if escalated_from_ai else '. The AI agent needs your decision on whether to approve this request'}.</p>
 
             <div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #FF9800;">
                 <p><strong>Website:</strong> <a href="{link}">{link}</a></p>
                 <p><strong>Original Blocking Reason:</strong> {blocking_reason}</p>
                 <p><strong>Child's Appeal Reason:</strong> {appeal_reason}</p>
             </div>
+
+            {ai_section}
 
             <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
                 <h3 style="color: #1976D2;">How to Respond:</h3>
