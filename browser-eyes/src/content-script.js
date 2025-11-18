@@ -108,6 +108,84 @@ function extractAndSend() {
 
 function showBlockPageWithAppeal(reason, appealsUsed = 0) {
   console.log('showBlockPageWithAppeal called with reason:', reason, 'appealsUsed:', appealsUsed);
+
+  // Define submitAppeal in global scope so onclick handlers can access it
+  window.submitAppeal = function() {
+    console.log('submitAppeal() called');
+    const reason = document.getElementById('appeal-reason').value.trim();
+
+    if (!reason) {
+      alert('Please explain why you need this website');
+      return;
+    }
+
+    // Disable the form elements immediately
+    const textarea = document.getElementById('appeal-reason');
+    const submitBtn = document.getElementById('submit-btn');
+    const backBtn = document.getElementById('back-btn');
+
+    textarea.disabled = true;
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '0.5';
+    submitBtn.style.cursor = 'not-allowed';
+
+    const statusDiv = document.getElementById('status-message');
+    statusDiv.textContent = 'Submitting appeal...';
+    statusDiv.className = 'status-message show pending';
+
+    console.log('Sending appeal request to server...');
+
+    fetch('http://localhost:5000/appeal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: window.location.href,
+        title: document.title,
+        appeal_reason: reason
+      })
+    })
+    .then(response => {
+      console.log('Received response:', response);
+      return response.json();
+    })
+    .then(data => {
+      console.log('Appeal response data:', data);
+
+      if (data.status === 'approved') {
+        statusDiv.textContent = 'Appeal approved! ' + data.reason;
+        statusDiv.className = 'status-message show success';
+
+        if (data.reload) {
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        }
+      } else {
+        // Appeal is pending parent approval
+        statusDiv.textContent = data.reason;
+        statusDiv.className = 'status-message show pending';
+
+        // Hide the textarea and submit button since appeal is submitted
+        textarea.style.display = 'none';
+        submitBtn.style.display = 'none';
+
+        // Update the back button text
+        backBtn.textContent = 'Return to Previous Page';
+      }
+    })
+    .catch(error => {
+      console.error('Error submitting appeal:', error);
+      statusDiv.textContent = 'Error submitting appeal. Please try again.';
+      statusDiv.className = 'status-message show';
+
+      // Re-enable form on error
+      textarea.disabled = false;
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.style.cursor = 'pointer';
+    });
+  };
+
   document.documentElement.innerHTML = `
     <!DOCTYPE html>
     <html>
@@ -222,7 +300,7 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
         <div class="reason">
           <strong>Reason:</strong> ${reason}
         </div>
-        
+
         <div class="appeal-section">
           <h2>Need this website?</h2>
           <p style="font-size: 16px; opacity: 0.9;">Explain why you need access and it will be reviewed</p>
@@ -230,87 +308,9 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
           <button id="submit-btn" onclick="submitAppeal()">Submit Appeal</button>
           <button id="back-btn" class="secondary" onclick="history.back()">Go Back</button>
         </div>
-        
+
         <div id="status-message" class="status-message"></div>
       </div>
-      
-      <script>
-        function submitAppeal() {
-          console.log('submitAppeal() called');
-          const reason = document.getElementById('appeal-reason').value.trim();
-
-          if (!reason) {
-            alert('Please explain why you need this website');
-            return;
-          }
-
-          // Disable the form elements immediately
-          const textarea = document.getElementById('appeal-reason');
-          const submitBtn = document.getElementById('submit-btn');
-          const backBtn = document.getElementById('back-btn');
-
-          textarea.disabled = true;
-          submitBtn.disabled = true;
-          submitBtn.style.opacity = '0.5';
-          submitBtn.style.cursor = 'not-allowed';
-
-          const statusDiv = document.getElementById('status-message');
-          statusDiv.textContent = 'Submitting appeal...';
-          statusDiv.className = 'status-message show pending';
-
-          console.log('Sending appeal request to server...');
-
-          fetch('http://localhost:5000/appeal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: window.location.href,
-              title: document.title,
-              appeal_reason: reason
-            })
-          })
-          .then(response => {
-            console.log('Received response:', response);
-            return response.json();
-          })
-          .then(data => {
-            console.log('Appeal response data:', data);
-
-            if (data.status === 'approved') {
-              statusDiv.textContent = 'Appeal approved! ' + data.reason;
-              statusDiv.className = 'status-message show success';
-
-              if (data.reload) {
-                setTimeout(() => {
-                  window.location.reload();
-                }, 2000);
-              }
-            } else {
-              // Appeal is pending parent approval
-              statusDiv.textContent = data.reason;
-              statusDiv.className = 'status-message show pending';
-
-              // Hide the textarea and submit button since appeal is submitted
-              textarea.style.display = 'none';
-              submitBtn.style.display = 'none';
-
-              // Update the back button text
-              backBtn.textContent = 'Return to Previous Page';
-            }
-          })
-          .catch(error => {
-            console.error('Error submitting appeal:', error);
-            statusDiv.textContent = 'Error submitting appeal. Please try again.';
-            statusDiv.className = 'status-message show';
-
-            // Re-enable form on error
-            textarea.disabled = false;
-            submitBtn.disabled = false;
-            submitBtn.style.opacity = '1';
-            submitBtn.style.cursor = 'pointer';
-          });
-        }
-      </script>
     </body>
     </html>
   `;
