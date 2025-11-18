@@ -87,8 +87,8 @@ function extractAndSend() {
       console.log("Analysis result:", data);
 
       if (data.action === 'block') {
-        // Check if appeals are enabled AND haven't been used yet (max 1 appeal)
-        const canAppeal = data.appeal_enabled && (data.appeals_used || 0) < 1;
+        // Check if appeals haven't been used yet (max 1 appeal)
+        const canAppeal = (data.appeals_used || 0) < 1;
 
         if (canAppeal) {
           showBlockPageWithAppeal(data.reason, data.appeals_used || 0);
@@ -282,6 +282,7 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
       console.log('Appeal response data:', data);
 
       if (data.status === 'approved') {
+        // AI approved the appeal
         statusDiv.textContent = 'Appeal approved! ' + data.reason;
         statusDiv.className = 'status-message show success';
 
@@ -296,8 +297,60 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
             window.location.reload();
           }, 2000);
         }
-      } else {
-        // Appeal is pending parent approval
+      } else if (data.status === 'ai_denied') {
+        // AI denied - offer escalation to parent
+        statusDiv.textContent = 'The AI agent reviewed your request but decided to keep this website blocked. Reason: ' + data.reason;
+        statusDiv.className = 'status-message show';
+        statusDiv.style.background = 'rgba(255, 152, 0, 0.3)';
+
+        // Re-enable form
+        textarea.disabled = false;
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+
+        // Change submit button to "Ask Parent Anyway"
+        submitBtn.textContent = 'Ask Parent Anyway';
+
+        // Update the click handler to escalate
+        submitBtn.onclick = function() {
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+          textarea.disabled = true;
+
+          statusDiv.textContent = 'Sending request to parent...';
+          statusDiv.className = 'status-message show pending';
+
+          fetch('http://localhost:5000/escalate-to-parent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              appeal_id: data.appeal_id,
+              url: window.location.href,
+              appeal_reason: appealReason
+            })
+          })
+          .then(response => response.json())
+          .then(escalateData => {
+            statusDiv.textContent = escalateData.reason;
+            statusDiv.className = 'status-message show pending';
+
+            // Remove appeal section
+            const appealSection = document.getElementById('appeal-section');
+            if (appealSection) {
+              appealSection.remove();
+            }
+          })
+          .catch(error => {
+            console.error('Error escalating to parent:', error);
+            statusDiv.textContent = 'Error sending request to parent. Please try again.';
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            textarea.disabled = false;
+          });
+        };
+      } else if (data.status === 'pending_parent') {
+        // Sent directly to parent (no AI evaluation) or after escalation
         statusDiv.textContent = data.reason;
         statusDiv.className = 'status-message show pending';
 

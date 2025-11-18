@@ -359,7 +359,8 @@ def analyze_webpage():
 
     result = check_webpage_against_DB(link)
     if result is not None:
-        result["appeal_enabled"] = agent_can_auto_approve
+        result["appeal_enabled"] = True  # Always allow appeals
+        result["agent_has_authority"] = agent_can_auto_approve
         return jsonify(result)
 
     result = asyncio.run(web_content_analysis(link, title, content))
@@ -371,7 +372,8 @@ def analyze_webpage():
         add_to_whitelist(link, reason=result["reason"])
         result["appeals_used"] = 0
 
-    result["appeal_enabled"] = agent_can_auto_approve
+    result["appeal_enabled"] = True  # Always allow appeals
+    result["agent_has_authority"] = agent_can_auto_approve
 
     return jsonify(result)
 
@@ -485,6 +487,7 @@ def submit_appeal():
 
     domain = urlparse(link).netloc.lower()
     config = get_monitoring_config()
+    agent_can_auto_approve = config.get("agent_can_auto_approve", False)
 
     entry = blacklist_col.find_one({"link": link})
     if not entry:
@@ -510,10 +513,7 @@ def submit_appeal():
         "status": "pending",
     })
 
-    decision = asyncio.run(evaluate_appeal_with_llm(link, title, entry["reason"],  appeal_reason, config["monitoring_prompt"]))
-    # expected shape: {"should_auto_approve": True/False, "reason": "..."}
-
-    # 5. Mark that an appeal was used, and log the result
+    # Mark that an appeal was used
     blacklist_col.update_one(
         {"_id": entry["_id"]},
         {
@@ -521,12 +521,50 @@ def submit_appeal():
             "$set": {
                 "last_appeal_at": datetime.now(),
                 "last_appeal_message": appeal_reason,
-                "last_appeal_llm_reason": decision.get("reason"),
             },
         },
     )
 
-    if decision["action"]=="approve":
+    # SCENARIO 2: Agent does NOT have auto-approve authority
+    # Skip AI evaluation and go directly to parent
+    if not agent_can_auto_approve:
+        approval_id = f"approval_{int(time.time())}"
+        pending_approvals_col.insert_one({
+            "approval_id": approval_id,
+            "appeal_id": appeal_id,
+            "link": link,
+            "domain": domain,
+            "child_reason": appeal_reason,
+            "timestamp": datetime.now(),
+            "status": "awaiting_parent",
+        })
+
+        appeals_col.update_one(
+            {"appeal_id": appeal_id},
+            {"$set": {"status": "awaiting_parent"}},
+        )
+
+        send_approval_request_email(approval_id, link, appeal_reason)
+
+        return jsonify({
+            "ok": True,
+            "status": "pending_parent",
+            "action": "block",
+            "reason": "Your request has been sent to your parent for approval.",
+        })
+
+    # SCENARIO 1: Agent HAS auto-approve authority
+    # Let AI evaluate first
+    decision = asyncio.run(evaluate_appeal_with_llm(link, title, entry["reason"], appeal_reason, config["monitoring_prompt"]))
+
+    # Update blacklist with AI decision
+    blacklist_col.update_one(
+        {"_id": entry["_id"]},
+        {"$set": {"last_appeal_llm_reason": decision.get("reason")}},
+    )
+
+    if decision["action"] == "approve":
+        # AI approved the appeal
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
@@ -539,7 +577,7 @@ def submit_appeal():
             {"$set": {"status": "auto_approved", "agent_decision": decision["reason"]}},
         )
 
-        notify_parent_appeal_approved(link, appeal_reason, decision["reason"]) #TODO: Implement this function to send an email notification to the parent about the appeal approval
+        notify_parent_appeal_approved(link, appeal_reason, decision["reason"])
 
         return jsonify({
             "ok": True,
@@ -549,6 +587,47 @@ def submit_appeal():
             "reload": True,
         })
 
+    # AI denied the appeal - offer escalation to parent
+    appeals_col.update_one(
+        {"appeal_id": appeal_id},
+        {"$set": {"status": "ai_denied", "agent_decision": decision["reason"]}},
+    )
+
+    return jsonify({
+        "ok": True,
+        "status": "ai_denied",
+        "action": "block",
+        "reason": decision["reason"],
+        "can_escalate": True,
+        "appeal_id": appeal_id,
+    })
+
+
+@app.route("/escalate-to-parent", methods=["POST"])
+def escalate_to_parent():
+    """Child escalates to parent after AI denied the appeal"""
+    data = request.json
+    appeal_id = data.get("appeal_id", "")
+    link = data.get("url", "")
+    appeal_reason = data.get("appeal_reason", "")
+
+    # Verify the appeal exists and was AI-denied
+    appeal = appeals_col.find_one({"appeal_id": appeal_id})
+    if not appeal:
+        return jsonify({
+            "ok": False,
+            "error": "Appeal not found."
+        }), 400
+
+    if appeal.get("status") != "ai_denied":
+        return jsonify({
+            "ok": False,
+            "error": "This appeal cannot be escalated."
+        }), 403
+
+    domain = urlparse(link).netloc.lower()
+
+    # Create pending approval for parent review
     approval_id = f"approval_{int(time.time())}"
     pending_approvals_col.insert_one({
         "approval_id": approval_id,
@@ -558,18 +637,27 @@ def submit_appeal():
         "child_reason": appeal_reason,
         "timestamp": datetime.now(),
         "status": "awaiting_parent",
+        "escalated_from_ai": True,
+        "ai_decision": appeal.get("agent_decision", ""),
     })
 
-    send_approval_request_email(approval_id, link, appeal_reason) # TODO: Implement this function to send an email to the parent with the appeal details and they can either respond or go to a dashboard to approve or block the content.
+    # Update appeal status
+    appeals_col.update_one(
+        {"appeal_id": appeal_id},
+        {"$set": {"status": "escalated_to_parent"}},
+    )
+
+    # Send email to parent
+    send_approval_request_email(approval_id, link, appeal_reason)
 
     return jsonify({
         "ok": True,
-        "status": "pending",
+        "status": "pending_parent",
         "action": "block",
-        "reason": "Your appeal has been sent to your parent for review.",
+        "reason": "Your request has been sent to your parent for review.",
     })
 
-    
+
 
 """Initialize the monitoring configuration for the parent"""
 @app.route("/initialize", methods=["POST"])
