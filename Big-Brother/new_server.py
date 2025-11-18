@@ -424,6 +424,172 @@ def get_blacklist():
     return jsonify(items)
 
 
+@app.route("/config", methods=["GET"])
+def get_config():
+    """Get current monitoring configuration"""
+    config = get_monitoring_config()
+    # Remove MongoDB _id field if present
+    config.pop("_id", None)
+    return jsonify(config)
+
+
+@app.route("/config", methods=["PUT"])
+def update_config():
+    """Update monitoring configuration"""
+    data = request.json
+
+    # Validate required fields
+    if "parent_email" not in data or "monitoring_prompt" not in data:
+        return jsonify({"ok": False, "error": "Missing required fields"}), 400
+
+    new_config = {
+        "type": "monitoring_rules",
+        "parent_email": data.get("parent_email"),
+        "monitoring_prompt": data.get("monitoring_prompt"),
+        "agent_can_auto_approve": data.get("agent_can_auto_approve", False),
+        "desktop_monitoring_enabled": data.get("desktop_monitoring_enabled", True),
+        "screenshot_interval": data.get("screenshot_interval", 120),
+        "blocked_apps": data.get("blocked_apps", []),
+    }
+
+    update_monitoring_config(new_config)
+    return jsonify({"ok": True, "message": "Configuration updated successfully"})
+
+
+@app.route("/whitelist", methods=["POST"])
+def add_to_whitelist_endpoint():
+    """Add domain to whitelist"""
+    data = request.json
+    domain = data.get("domain", "").strip().lower()
+
+    if not domain:
+        return jsonify({"ok": False, "error": "Domain is required"}), 400
+
+    if add_to_whitelist(domain, reason="Parent added"):
+        return jsonify({"ok": True, "message": f"Added {domain} to whitelist"})
+    else:
+        return jsonify({"ok": False, "error": "Domain already in whitelist"}), 409
+
+
+@app.route("/whitelist/<path:domain>", methods=["DELETE"])
+def remove_from_whitelist(domain):
+    """Remove domain from whitelist"""
+    domain = domain.strip().lower()
+    result = whitelist_col.delete_one({"link": domain})
+
+    if result.deleted_count > 0:
+        return jsonify({"ok": True, "message": f"Removed {domain} from whitelist"})
+    else:
+        return jsonify({"ok": False, "error": "Domain not found in whitelist"}), 404
+
+
+@app.route("/blacklist", methods=["POST"])
+def add_to_blacklist_endpoint():
+    """Add domain to blacklist"""
+    data = request.json
+    domain = data.get("domain", "").strip().lower()
+
+    if not domain:
+        return jsonify({"ok": False, "error": "Domain is required"}), 400
+
+    if add_to_blacklist(domain, reason="Parent added"):
+        return jsonify({"ok": True, "message": f"Added {domain} to blacklist"})
+    else:
+        return jsonify({"ok": False, "error": "Domain already in blacklist"}), 409
+
+
+@app.route("/blacklist/<path:domain>", methods=["DELETE"])
+def remove_from_blacklist(domain):
+    """Remove domain from blacklist"""
+    domain = domain.strip().lower()
+    result = blacklist_col.delete_one({"link": domain})
+
+    if result.deleted_count > 0:
+        return jsonify({"ok": True, "message": f"Removed {domain} from blacklist"})
+    else:
+        return jsonify({"ok": False, "error": "Domain not found in blacklist"}), 404
+
+
+@app.route("/pending-approvals", methods=["GET"])
+def get_pending_approvals():
+    """Get all pending parent approvals"""
+    approvals = list(pending_approvals_col.find(
+        {"status": "awaiting_parent"},
+        {"_id": 0}
+    ).sort("timestamp", -1))
+
+    return jsonify(approvals)
+
+
+@app.route("/approve-appeal", methods=["POST"])
+def approve_appeal():
+    """Parent approves a pending appeal"""
+    data = request.json
+    approval_id = data.get("approval_id", "")
+
+    if not approval_id:
+        return jsonify({"ok": False, "error": "approval_id is required"}), 400
+
+    # Find the pending approval
+    approval = pending_approvals_col.find_one({"approval_id": approval_id})
+    if not approval:
+        return jsonify({"ok": False, "error": "Approval request not found"}), 404
+
+    if approval.get("status") != "awaiting_parent":
+        return jsonify({"ok": False, "error": "This approval has already been processed"}), 409
+
+    link = approval.get("link")
+
+    # Add to whitelist and remove from blacklist
+    add_to_whitelist(link, reason="Parent approved appeal")
+
+    # Update the appeal status
+    appeals_col.update_one(
+        {"appeal_id": approval.get("appeal_id")},
+        {"$set": {"status": "parent_approved", "resolved_at": datetime.now()}}
+    )
+
+    # Update pending approval status
+    pending_approvals_col.update_one(
+        {"approval_id": approval_id},
+        {"$set": {"status": "approved", "resolved_at": datetime.now()}}
+    )
+
+    return jsonify({"ok": True, "message": f"Appeal approved for {link}"})
+
+
+@app.route("/deny-appeal", methods=["POST"])
+def deny_appeal():
+    """Parent denies a pending appeal"""
+    data = request.json
+    approval_id = data.get("approval_id", "")
+
+    if not approval_id:
+        return jsonify({"ok": False, "error": "approval_id is required"}), 400
+
+    # Find the pending approval
+    approval = pending_approvals_col.find_one({"approval_id": approval_id})
+    if not approval:
+        return jsonify({"ok": False, "error": "Approval request not found"}), 404
+
+    if approval.get("status") != "awaiting_parent":
+        return jsonify({"ok": False, "error": "This approval has already been processed"}), 409
+
+    # Update the appeal status
+    appeals_col.update_one(
+        {"appeal_id": approval.get("appeal_id")},
+        {"$set": {"status": "parent_denied", "resolved_at": datetime.now()}}
+    )
+
+    # Update pending approval status
+    pending_approvals_col.update_one(
+        {"approval_id": approval_id},
+        {"$set": {"status": "denied", "resolved_at": datetime.now()}}
+    )
+
+    return jsonify({"ok": True, "message": "Appeal denied"})
+
+
 # Reference:
 #   const pageData = {
 #     url: window.location.href,
