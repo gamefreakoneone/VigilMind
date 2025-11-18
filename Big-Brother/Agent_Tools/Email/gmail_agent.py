@@ -37,8 +37,9 @@ class GmailAgent:
     
     def __init__(self, credentials_file='credentials.json', token_file='token.pickle'):
         """Initialize Gmail Agent with authentication"""
-        self.credentials_file = credentials_file
-        self.token_file = token_file
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.credentials_file = os.path.join(script_dir, credentials_file)
+        self.token_file = os.path.join(script_dir, token_file)
         self.service = self.authenticate()
         self.processed_messages = set()  # Track processed message IDs
         

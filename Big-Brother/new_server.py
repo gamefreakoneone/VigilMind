@@ -89,9 +89,9 @@ def get_monitoring_config():
     if not config:
         config = {
             "type": "monitoring_rules",
-            "parent_email": "",  # Insert default email here.
-            "monitoring_prompt": "Block mangadex  only. But allow him to access the site if he says he wants to read One punch man.",
-            "agent_can_auto_approve": True,
+            "parent_email": "amogh@outlook.com",  # Insert default email here.
+            "monitoring_prompt": "Block google  only.",
+            "agent_can_auto_approve": False,
             "desktop_monitoring_enabled": True,
             "screenshot_interval": 120,
             "blocked_apps": ["steam.exe"],

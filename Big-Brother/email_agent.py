@@ -80,7 +80,7 @@ The approval ID will typically be in the format: approval_XXXXXXXXXX
 
 Output your decision in the required JSON format.""",
     output_type=EmailResponseJSON,
-    model="gpt-4o-mini"
+    model="gpt-5-mini"
 )
 
 
