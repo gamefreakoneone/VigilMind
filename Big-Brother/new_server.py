@@ -16,7 +16,7 @@ from pydantic import BaseModel
 import asyncio
 from youtube_transcript_api import YouTubeTranscriptApi
 import prompts
-from email_agent import notify_parent_appeal_approved, send_approval_request_email
+from email_agent import notify_parent_appeal_approved, send_approval_request_email, start_email_monitoring
 
 # ytt_api.fetch("6Lq3k-XQkrE")
 
@@ -625,6 +625,11 @@ def main():
     print("Initializing default monitoring configuration...")
     get_monitoring_config()
     print("Monitoring configuration initialized.")
+
+    # --- Start Email Monitoring Service ---
+    print("Starting email monitoring service...")
+    start_email_monitoring(check_interval=60)  # Check inbox every 60 seconds
+    print("Email monitoring service initialized.")
 
     # --- Start Flask app ---
     print(f"Starting server on {args.host}:{args.port}...")
