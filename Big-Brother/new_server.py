@@ -477,7 +477,7 @@ def analyze_webpage():
     if result["action"] == "block":
         add_to_blacklist(
             link,
-            reason=result.get("parental_reasoning", "AI Analysis"),
+            reason="AI Analysis",  # Fixed: Always use "AI Analysis" for AI-generated entries
             reasoning=result.get("reasoning"),
             parental_reasoning=result.get("parental_reasoning")
         )
@@ -485,7 +485,7 @@ def analyze_webpage():
     else:
         add_to_whitelist(
             link,
-            reason=result.get("parental_reasoning", "AI Analysis"),
+            reason="AI Analysis",  # Fixed: Always use "AI Analysis" for AI-generated entries
             reasoning=result.get("reasoning"),
             parental_reasoning=result.get("parental_reasoning")
         )
@@ -934,7 +934,7 @@ def submit_appeal():
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
-            "reason": f"Appeal auto-approved: {decision.get('parental_reasoning')}",
+            "reason": "Appeal auto-approved",  # Fixed: Use consistent tag for filtering
             "reasoning": decision.get("reasoning"),
             "parental_reasoning": decision.get("parental_reasoning"),
         })
