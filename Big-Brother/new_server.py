@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from pymongo import MongoClient, ASCENDING
 import openai
@@ -152,14 +152,14 @@ def add_to_desktop_whitelist(app_name, reason='Manual'):
     except:
         return False
 
-def add_to_desktop_blacklist(app_name, reason='Manual', screenshot_path=None, reasoning=None, parental_reasoning=None):
+def add_to_desktop_blacklist(app_name, reason='Manual', screenshot_id=None, reasoning=None, parental_reasoning=None):
     """Add app to desktop blacklist"""
     try:
         entry = {
             "app": app_name.lower(),
             "added_at": datetime.now(),
             "reason": reason,
-            "screenshot_path": screenshot_path,
+            "screenshot_id": screenshot_id,
             "reasoning": reasoning,
             "parental_reasoning": parental_reasoning
         }
@@ -1123,7 +1123,7 @@ def analyze_desktop_app():
         add_to_desktop_blacklist(
             app_name,
             reason="AI Analysis",
-            screenshot_path=screenshot_path,
+            screenshot_id=image_id,
             reasoning=result.get("reasoning"),
             parental_reasoning=result.get("parental_reasoning")
         )
@@ -1173,7 +1173,7 @@ def remove_from_desktop_blacklist(app_name):
     """Remove app from desktop blacklist and add to whitelist (approve)"""
     app_name = app_name.strip().lower()
 
-    # Get the entry to find screenshot path
+    # Get the entry to find screenshot ID
     entry = blacklist_desktop_col.find_one({"app": app_name})
 
     # Delete the entry
@@ -1184,10 +1184,12 @@ def remove_from_desktop_blacklist(app_name):
         add_to_desktop_whitelist(app_name, reason="Parent approved")
 
         # Optionally delete the screenshot file
-        if entry and entry.get("screenshot_path"):
+        if entry and entry.get("screenshot_id"):
             try:
-                if os.path.exists(entry["screenshot_path"]):
-                    os.remove(entry["screenshot_path"])
+                screenshots_dir = os.path.join(os.path.dirname(__file__), "screenshots")
+                screenshot_path = os.path.join(screenshots_dir, f"{entry['screenshot_id']}.png")
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
             except Exception as e:
                 print(f"Error deleting screenshot: {e}")
 
@@ -1206,9 +1208,7 @@ def get_screenshot(image_id):
         return jsonify({"error": "Screenshot not found"}), 404
 
     try:
-        with open(screenshot_path, "rb") as f:
-            image_data = base64.b64encode(f.read()).decode()
-        return jsonify({"image": f"data:image/png;base64,{image_data}"})
+        return send_file(screenshot_path, mimetype='image/png')
     except Exception as e:
         return jsonify({"error": f"Error reading screenshot: {str(e)}"}), 500
 
