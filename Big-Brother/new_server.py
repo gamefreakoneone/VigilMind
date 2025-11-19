@@ -85,6 +85,49 @@ appeals_col.create_index([("link", ASCENDING)])
 pending_approvals_col.create_index([("approval_id", ASCENDING)], unique=True)
 
 
+# Critical system applications that should NEVER be terminated
+CRITICAL_SYSTEM_APPS = [
+    'explorer.exe',     # Windows Explorer/File Explorer - CRITICAL
+    'taskmgr.exe',      # Task Manager
+    'dwm.exe',          # Desktop Window Manager
+    'chrome.exe',       # Chrome browser (monitored by extension)
+    'firefox.exe',      # Firefox browser (monitored by extension)
+    'msedge.exe',       # Edge browser (monitored by extension)
+    'brave.exe',        # Brave browser (monitored by extension)
+    'csrss.exe',        # Client/Server Runtime Subsystem
+    'winlogon.exe',     # Windows Logon Process
+    'services.exe',     # Services Control Manager
+    'lsass.exe',        # Local Security Authority Subsystem
+    'svchost.exe',      # Service Host Process
+    'system',           # System process
+    'smss.exe',         # Session Manager Subsystem
+    'wininit.exe',      # Windows Start-Up Application
+]
+
+
+def initialize_critical_system_apps():
+    """Initialize critical system apps in whitelist to prevent accidental termination"""
+    print("Initializing critical system applications whitelist...")
+    for app in CRITICAL_SYSTEM_APPS:
+        try:
+            # Use upsert to avoid duplicates
+            whitelist_desktop_col.update_one(
+                {'app': app.lower()},
+                {'$set': {
+                    'app': app.lower(),
+                    'added_at': datetime.now(),
+                    'reason': 'Critical system application',
+                    'protected': True  # Mark as protected
+                }},
+                upsert=True
+            )
+            # Remove from blacklist if somehow it got there
+            blacklist_desktop_col.delete_one({'app': app.lower()})
+        except Exception as e:
+            print(f"Warning: Could not whitelist {app}: {e}")
+    print(f"Protected {len(CRITICAL_SYSTEM_APPS)} critical system applications")
+
+
 # Desktop monitoring helper functions
 def is_app_whitelisted(app_name):
     """Check if an app is in the whitelist"""
@@ -518,6 +561,10 @@ def update_config():
     if "parent_email" not in data or "monitoring_prompt" not in data:
         return jsonify({"ok": False, "error": "Missing required fields"}), 400
 
+    # Check if monitoring prompt has changed
+    old_config = get_monitoring_config()
+    prompt_changed = old_config.get("monitoring_prompt") != data.get("monitoring_prompt")
+
     new_config = {
         "type": "monitoring_rules",
         "parent_email": data.get("parent_email"),
@@ -529,6 +576,31 @@ def update_config():
     }
 
     update_monitoring_config(new_config)
+
+    # If monitoring prompt changed, clear AI-generated lists
+    if prompt_changed:
+        print("Monitoring prompt changed - clearing AI-generated lists...")
+
+        # Clear web blacklist (AI-generated only)
+        result = blacklist_col.delete_many({"reason": {"$in": ["AI Analysis", "Appeal auto-approved"]}})
+        print(f"Removed {result.deleted_count} AI-generated blacklist entries")
+
+        # Clear web whitelist (AI-generated only, keep manually added)
+        result = whitelist_col.delete_many({"reason": {"$in": ["AI Analysis", "Appeal auto-approved"]}})
+        print(f"Removed {result.deleted_count} AI-generated whitelist entries")
+
+        # Clear desktop blacklist (AI-generated only)
+        result = blacklist_desktop_col.delete_many({"reason": "AI Analysis"})
+        print(f"Removed {result.deleted_count} AI-generated desktop blacklist entries")
+
+        # Reinitialize critical system apps
+        initialize_critical_system_apps()
+
+        return jsonify({
+            "ok": True,
+            "message": "Configuration updated successfully. AI-generated lists cleared to apply new guidelines."
+        })
+
     return jsonify({"ok": True, "message": "Configuration updated successfully"})
 
 
@@ -1169,6 +1241,9 @@ def main():
     print("Initializing default monitoring configuration...")
     get_monitoring_config()
     print("Monitoring configuration initialized.")
+
+    # --- Initialize critical system apps whitelist ---
+    initialize_critical_system_apps()
 
     # --- Start Email Monitoring Service ---
     print("Starting email monitoring service...")

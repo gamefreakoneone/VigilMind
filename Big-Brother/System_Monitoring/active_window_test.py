@@ -42,18 +42,41 @@ class DesktopMonitor:
     def get_active_window(self):
         try:
             hwnd = win32gui.GetForegroundWindow()
-            window_title = win32gui.GetWindowText(hwnd)
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            process = psutil.Process(pid)
-            process_name = process.name()
-            
+
+            # Skip if hwnd is 0 or invalid
+            if not hwnd:
+                return None
+
+            # Get window title with error handling
+            try:
+                window_title = win32gui.GetWindowText(hwnd)
+            except:
+                window_title = ""
+
+            # Get process ID with error handling
+            try:
+                thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
+                # Validate pid is a valid integer
+                if not pid or not isinstance(pid, int):
+                    return None
+            except:
+                return None
+
+            # Get process info with error handling
+            try:
+                process = psutil.Process(pid)
+                process_name = process.name()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process ended or access denied
+                return None
+
             return {
                 'process_name': process_name,
                 'window_title': window_title,
                 'pid': pid
             }
         except Exception as e:
-            print(f"Error getting window: {e}")
+            # Silently ignore common Win32 API errors to avoid spam
             return None
     
     def is_browser(self, process_name):
