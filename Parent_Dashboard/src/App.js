@@ -470,10 +470,10 @@ function App() {
                       </div>
                     )}
 
-                    {item.screenshot_path && (
+                    {item.screenshot_id && (
                       <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
                         <img
-                          src={`${API_BASE}/desktop/screenshot/${item.screenshot_path.split('/').pop().replace('.png', '')}`}
+                          src={`${API_BASE}/desktop/screenshot/${item.screenshot_id}`}
                           alt="Screenshot"
                           style={{
                             maxWidth: '100%',
@@ -483,7 +483,7 @@ function App() {
                           }}
                           onClick={() => {
                             window.open(
-                              `${API_BASE}/desktop/screenshot/${item.screenshot_path.split('/').pop().replace('.png', '')}`,
+                              `${API_BASE}/desktop/screenshot/${item.screenshot_id}`,
                               '_blank'
                             );
                           }}
