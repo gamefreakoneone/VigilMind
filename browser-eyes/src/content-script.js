@@ -97,10 +97,13 @@ function extractAndSend() {
         // Check if appeals haven't been used yet (max 1 appeal)
         const canAppeal = (data.appeals_used || 0) < 1;
 
+        // Use "reasoning" (child-safe) instead of "reason" or "parental_reasoning"
+        const displayReason = data.reasoning || data.reason || "This content has been blocked.";
+
         if (canAppeal) {
-          showBlockPageWithAppeal(data.reason, data.appeals_used || 0);
+          showBlockPageWithAppeal(displayReason, data.appeals_used || 0);
         } else {
-          blockPage(data.reason);
+          blockPage(displayReason);
         }
       } else {
         // Allowed - remove loading screen
@@ -290,7 +293,8 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
 
       if (data.status === 'approved') {
         // AI approved the appeal
-        statusDiv.textContent = 'Appeal approved! ' + data.reason;
+        const approvalMessage = data.reasoning || data.reason || 'Your appeal has been approved!';
+        statusDiv.textContent = 'Appeal approved! ' + approvalMessage;
         statusDiv.className = 'status-message show success';
 
         // Remove the appeals section
@@ -306,7 +310,8 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
         }
       } else if (data.status === 'ai_denied') {
         // AI denied - offer escalation to parent
-        statusDiv.textContent = 'The AI agent reviewed your request but decided to keep this website blocked. Reason: ' + data.reason;
+        const denialMessage = data.reasoning || data.reason || 'Your appeal was not approved.';
+        statusDiv.textContent = 'The AI agent reviewed your request but decided to keep this website blocked. Reason: ' + denialMessage;
         statusDiv.className = 'status-message show';
         statusDiv.style.background = 'rgba(255, 152, 0, 0.3)';
 

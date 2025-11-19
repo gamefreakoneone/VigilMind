@@ -108,30 +108,44 @@ def update_monitoring_config(new_config):
 
 
 
-def add_to_whitelist(link, reason='Manual'):
+def add_to_whitelist(link, reason='Manual', reasoning=None, parental_reasoning=None):
     """Add link to whitelist"""
     try:
-        whitelist_col.insert_one({
+        entry = {
             "link": link,
             "added_at": datetime.now(),
             "reason": reason
-        })
+        }
+        # Add new reasoning fields if provided
+        if reasoning:
+            entry["reasoning"] = reasoning
+        if parental_reasoning:
+            entry["parental_reasoning"] = parental_reasoning
+
+        whitelist_col.insert_one(entry)
         # Remove from blacklist if exists
         blacklist_col.delete_one({'link': link})
         return True
     except:
         return False
-    
 
-def add_to_blacklist(link, reason='Manual'):
+
+def add_to_blacklist(link, reason='Manual', reasoning=None, parental_reasoning=None):
     """Add link to blacklist. Also add number of appeals"""
     try:
-        blacklist_col.insert_one({
+        entry = {
             "link": link,
             "appeals": 0,
             "added_at": datetime.now(),
             "reason": reason
-        })
+        }
+        # Add new reasoning fields if provided
+        if reasoning:
+            entry["reasoning"] = reasoning
+        if parental_reasoning:
+            entry["parental_reasoning"] = parental_reasoning
+
+        blacklist_col.insert_one(entry)
         # Remove from whitelist if exists
         whitelist_col.delete_one({'link': link})
         return True
@@ -273,7 +287,8 @@ def extract_video_id(link: str) -> str:
 class web_content_analysis_JSON(BaseModel):
     link: str
     action: str  # 'approve' or 'block'
-    reason: str
+    reasoning: str  # Vague, child-safe explanation
+    parental_reasoning: str  # Detailed explanation for parents
 
 
 web_checker_agent = Agent(
@@ -316,7 +331,8 @@ async def web_content_analysis(link, title, content):
         return {
             "link": link,
             "action": "block",
-            "reason": "Error during analysis, review manually.",
+            "reasoning": "We couldn't check this content properly. Please try again later.",
+            "parental_reasoning": "Error during analysis, review manually.",
         }
 
 def check_webpage_against_DB(link):
@@ -330,10 +346,14 @@ def check_webpage_against_DB(link):
 
     if bl_entry:
         appeals_used = bl_entry.get("appeals", 0)
+        # Support both old and new format
+        reasoning = bl_entry.get("reasoning", "This content has been blocked.")
+        parental_reasoning = bl_entry.get("parental_reasoning", bl_entry.get("reason", "Blacklisted"))
         return {
             "link": link,
             "action": "block",
-            "reason": bl_entry.get("reason", "Blacklisted"),
+            "reasoning": reasoning,
+            "parental_reasoning": parental_reasoning,
             "appeals_used": appeals_used,
         }
 
@@ -341,7 +361,8 @@ def check_webpage_against_DB(link):
         return {
             "link": link,
             "action": "allow",
-            "reason": "URL or domain whitelisted",
+            "reasoning": "This content is approved.",
+            "parental_reasoning": "URL or domain whitelisted",
             "appeals_used": 0,
         }
 
@@ -366,10 +387,20 @@ def analyze_webpage():
     result = asyncio.run(web_content_analysis(link, title, content))
 
     if result["action"] == "block":
-        add_to_blacklist(link, reason=result["reason"])
+        add_to_blacklist(
+            link,
+            reason=result.get("parental_reasoning", "AI Analysis"),
+            reasoning=result.get("reasoning"),
+            parental_reasoning=result.get("parental_reasoning")
+        )
         result["appeals_used"] = 0
     else:
-        add_to_whitelist(link, reason=result["reason"])
+        add_to_whitelist(
+            link,
+            reason=result.get("parental_reasoning", "AI Analysis"),
+            reasoning=result.get("reasoning"),
+            parental_reasoning=result.get("parental_reasoning")
+        )
         result["appeals_used"] = 0
 
     result["appeal_enabled"] = True  # Always allow appeals
@@ -602,7 +633,8 @@ def deny_appeal():
 class Final_Appeal_JSON(BaseModel):
     link: str
     action: str  # 'approve' or 'block'
-    reason: str
+    reasoning: str  # Vague, child-safe explanation
+    parental_reasoning: str  # Detailed explanation for parents
 
 
 appeal_agent = Agent(
@@ -639,7 +671,8 @@ async def evaluate_appeal_with_llm(link, title, previous_evaluation_reason  , ap
         return {
             "link": link,
             "action": "block",
-            "reason": "Error during analysis, review manually.",
+            "reasoning": "We couldn't review your appeal properly. Please try again later.",
+            "parental_reasoning": "Error during analysis, review manually.",
         }
     pass
 
@@ -721,12 +754,17 @@ def submit_appeal():
 
     # SCENARIO 1: Agent HAS auto-approve authority
     # Let AI evaluate first
-    decision = asyncio.run(evaluate_appeal_with_llm(link, title, entry["reason"], appeal_reason, config["monitoring_prompt"]))
+    # Use parental_reasoning from entry, fallback to old "reason" field for backward compatibility
+    past_reasoning = entry.get("parental_reasoning", entry.get("reason", "Previously blocked"))
+    decision = asyncio.run(evaluate_appeal_with_llm(link, title, past_reasoning, appeal_reason, config["monitoring_prompt"]))
 
-    # Update blacklist with AI decision
+    # Update blacklist with AI decision (store both reasoning types)
     blacklist_col.update_one(
         {"_id": entry["_id"]},
-        {"$set": {"last_appeal_llm_reason": decision.get("reason")}},
+        {"$set": {
+            "last_appeal_llm_reasoning": decision.get("reasoning"),
+            "last_appeal_llm_parental_reasoning": decision.get("parental_reasoning")
+        }},
     )
 
     if decision["action"] == "approve":
@@ -734,36 +772,46 @@ def submit_appeal():
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
-            "reason": f"Appeal auto-approved: {decision['reason']}",
+            "reason": f"Appeal auto-approved: {decision.get('parental_reasoning')}",
+            "reasoning": decision.get("reasoning"),
+            "parental_reasoning": decision.get("parental_reasoning"),
         })
         blacklist_col.delete_one({"link": link})
 
         appeals_col.update_one(
             {"appeal_id": appeal_id},
-            {"$set": {"status": "auto_approved", "agent_decision": decision["reason"]}},
+            {"$set": {
+                "status": "auto_approved",
+                "agent_decision": decision.get("parental_reasoning"),
+                "reasoning": decision.get("reasoning")
+            }},
         )
 
-        notify_parent_appeal_approved(link, appeal_reason, decision["reason"])
+        notify_parent_appeal_approved(link, appeal_reason, decision.get("parental_reasoning"))
 
         return jsonify({
             "ok": True,
             "status": "approved",
             "action": "allow",
-            "reason": decision["reason"],
+            "reasoning": decision.get("reasoning"),  # Child-safe message
             "reload": True,
         })
 
     # AI denied the appeal - offer escalation to parent
     appeals_col.update_one(
         {"appeal_id": appeal_id},
-        {"$set": {"status": "ai_denied", "agent_decision": decision["reason"]}},
+        {"$set": {
+            "status": "ai_denied",
+            "agent_decision": decision.get("parental_reasoning"),
+            "reasoning": decision.get("reasoning")
+        }},
     )
 
     return jsonify({
         "ok": True,
         "status": "ai_denied",
         "action": "block",
-        "reason": decision["reason"],
+        "reasoning": decision.get("reasoning"),  # Child-safe message
         "can_escalate": True,
         "appeal_id": appeal_id,
     })
