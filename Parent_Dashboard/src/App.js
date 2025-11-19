@@ -360,7 +360,7 @@ function App() {
                     <div className="list-item-info">
                       <div className="list-item-domain">{item.link}</div>
                       <div className="list-item-meta">
-                        Added: {formatTimestamp(item.added_at)} • {item.reason}
+                        Added: {formatTimestamp(item.added_at)} • {item.parental_reasoning || item.reason}
                       </div>
                     </div>
                     <button
@@ -397,7 +397,7 @@ function App() {
                     <div className="list-item-info">
                       <div className="list-item-domain">{item.link}</div>
                       <div className="list-item-meta">
-                        Added: {formatTimestamp(item.added_at)} • {item.reason}
+                        Added: {formatTimestamp(item.added_at)} • {item.parental_reasoning || item.reason}
                         {item.appeals > 0 && ` • Appeals used: ${item.appeals}`}
                       </div>
                     </div>
