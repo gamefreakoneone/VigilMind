@@ -17,6 +17,8 @@ import asyncio
 from youtube_transcript_api import YouTubeTranscriptApi
 import prompts
 from email_agent import notify_parent_appeal_approved, send_approval_request_email, start_email_monitoring
+import base64
+import uuid
 
 # ytt_api.fetch("6Lq3k-XQkrE")
 
@@ -81,6 +83,92 @@ blacklist_desktop_col.create_index([("app", ASCENDING)], unique=True)
 
 appeals_col.create_index([("link", ASCENDING)])
 pending_approvals_col.create_index([("approval_id", ASCENDING)], unique=True)
+
+
+# Critical system applications that should NEVER be terminated
+CRITICAL_SYSTEM_APPS = [
+    'explorer.exe',     # Windows Explorer/File Explorer - CRITICAL
+    'taskmgr.exe',      # Task Manager
+    'dwm.exe',          # Desktop Window Manager
+    'chrome.exe',       # Chrome browser (monitored by extension)
+    'firefox.exe',      # Firefox browser (monitored by extension)
+    'msedge.exe',       # Edge browser (monitored by extension)
+    'brave.exe',        # Brave browser (monitored by extension)
+    'csrss.exe',        # Client/Server Runtime Subsystem
+    'winlogon.exe',     # Windows Logon Process
+    'services.exe',     # Services Control Manager
+    'lsass.exe',        # Local Security Authority Subsystem
+    'svchost.exe',      # Service Host Process
+    'system',           # System process
+    'smss.exe',         # Session Manager Subsystem
+    'wininit.exe',      # Windows Start-Up Application
+]
+
+
+def initialize_critical_system_apps():
+    """Initialize critical system apps in whitelist to prevent accidental termination"""
+    print("Initializing critical system applications whitelist...")
+    for app in CRITICAL_SYSTEM_APPS:
+        try:
+            # Use upsert to avoid duplicates
+            whitelist_desktop_col.update_one(
+                {'app': app.lower()},
+                {'$set': {
+                    'app': app.lower(),
+                    'added_at': datetime.now(),
+                    'reason': 'Critical system application',
+                    'protected': True  # Mark as protected
+                }},
+                upsert=True
+            )
+            # Remove from blacklist if somehow it got there
+            blacklist_desktop_col.delete_one({'app': app.lower()})
+        except Exception as e:
+            print(f"Warning: Could not whitelist {app}: {e}")
+    print(f"Protected {len(CRITICAL_SYSTEM_APPS)} critical system applications")
+
+
+# Desktop monitoring helper functions
+def is_app_whitelisted(app_name):
+    """Check if an app is in the whitelist"""
+    return whitelist_desktop_col.find_one({'app': app_name.lower()}) is not None
+
+def is_app_blacklisted(app_name):
+    """Check if an app is in the blacklist"""
+    return blacklist_desktop_col.find_one({'app': app_name.lower()}) is not None
+
+def add_to_desktop_whitelist(app_name, reason='Manual'):
+    """Add app to desktop whitelist"""
+    try:
+        entry = {
+            "app": app_name.lower(),
+            "added_at": datetime.now(),
+            "reason": reason
+        }
+        whitelist_desktop_col.insert_one(entry)
+        # Remove from blacklist if exists
+        blacklist_desktop_col.delete_one({'app': app_name.lower()})
+        return True
+    except:
+        return False
+
+def add_to_desktop_blacklist(app_name, reason='Manual', screenshot_path=None, reasoning=None, parental_reasoning=None):
+    """Add app to desktop blacklist"""
+    try:
+        entry = {
+            "app": app_name.lower(),
+            "added_at": datetime.now(),
+            "reason": reason,
+            "screenshot_path": screenshot_path,
+            "reasoning": reasoning,
+            "parental_reasoning": parental_reasoning
+        }
+        blacklist_desktop_col.insert_one(entry)
+        # Remove from whitelist if exists
+        whitelist_desktop_col.delete_one({'app': app_name.lower()})
+        return True
+    except:
+        return False
 
 
 def get_monitoring_config():
@@ -389,7 +477,7 @@ def analyze_webpage():
     if result["action"] == "block":
         add_to_blacklist(
             link,
-            reason=result.get("parental_reasoning", "AI Analysis"),
+            reason="AI Analysis",  # Fixed: Always use "AI Analysis" for AI-generated entries
             reasoning=result.get("reasoning"),
             parental_reasoning=result.get("parental_reasoning")
         )
@@ -397,7 +485,7 @@ def analyze_webpage():
     else:
         add_to_whitelist(
             link,
-            reason=result.get("parental_reasoning", "AI Analysis"),
+            reason="AI Analysis",  # Fixed: Always use "AI Analysis" for AI-generated entries
             reasoning=result.get("reasoning"),
             parental_reasoning=result.get("parental_reasoning")
         )
@@ -473,6 +561,10 @@ def update_config():
     if "parent_email" not in data or "monitoring_prompt" not in data:
         return jsonify({"ok": False, "error": "Missing required fields"}), 400
 
+    # Check if monitoring prompt has changed
+    old_config = get_monitoring_config()
+    prompt_changed = old_config.get("monitoring_prompt") != data.get("monitoring_prompt")
+
     new_config = {
         "type": "monitoring_rules",
         "parent_email": data.get("parent_email"),
@@ -484,6 +576,31 @@ def update_config():
     }
 
     update_monitoring_config(new_config)
+
+    # If monitoring prompt changed, clear AI-generated lists
+    if prompt_changed:
+        print("Monitoring prompt changed - clearing AI-generated lists...")
+
+        # Clear web blacklist (AI-generated only)
+        result = blacklist_col.delete_many({"reason": {"$in": ["AI Analysis", "Appeal auto-approved"]}})
+        print(f"Removed {result.deleted_count} AI-generated blacklist entries")
+
+        # Clear web whitelist (AI-generated only, keep manually added)
+        result = whitelist_col.delete_many({"reason": {"$in": ["AI Analysis", "Appeal auto-approved"]}})
+        print(f"Removed {result.deleted_count} AI-generated whitelist entries")
+
+        # Clear desktop blacklist (AI-generated only)
+        result = blacklist_desktop_col.delete_many({"reason": "AI Analysis"})
+        print(f"Removed {result.deleted_count} AI-generated desktop blacklist entries")
+
+        # Reinitialize critical system apps
+        initialize_critical_system_apps()
+
+        return jsonify({
+            "ok": True,
+            "message": "Configuration updated successfully. AI-generated lists cleared to apply new guidelines."
+        })
+
     return jsonify({"ok": True, "message": "Configuration updated successfully"})
 
 
@@ -644,6 +761,20 @@ appeal_agent = Agent(
     output_type=Final_Appeal_JSON,
 )
 
+
+class Desktop_Analysis_JSON(BaseModel):
+    action: str  # 'ok' or 'block'
+    reasoning: str  # Vague, child-safe explanation (empty if ok)
+    parental_reasoning: str  # Detailed explanation for parents
+
+
+desktop_monitor_agent = Agent(
+    name="Desktop Application Monitor",
+    instructions=prompts.desktop_monitoring_prompt,
+    output_type=Desktop_Analysis_JSON,
+    model="gpt-4.1-mini"
+)
+
 async def evaluate_appeal_with_llm(link, title, previous_evaluation_reason  , appeal_reason, monitoring_prompt):
     try:
         prompt = prompts.appeals_prompt.format(
@@ -675,6 +806,37 @@ async def evaluate_appeal_with_llm(link, title, previous_evaluation_reason  , ap
             "parental_reasoning": "Error during analysis, review manually.",
         }
     pass
+
+
+async def analyze_desktop_screenshot(app_name, window_title, image_data_url, monitoring_prompt):
+    """Analyze desktop screenshot using vision agent"""
+    try:
+        prompt = prompts.desktop_monitoring_prompt.format(
+            parental_prompt=monitoring_prompt,
+            app_name=app_name,
+            window_title=window_title
+        )
+
+        input_items = [{
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": image_data_url}
+            ]
+        }]
+
+        result = await Runner.run(desktop_monitor_agent, input=input_items)
+        structured = result.final_output_as(Desktop_Analysis_JSON)
+        return structured.model_dump()
+
+    except Exception as e:
+        print(f"ERROR during desktop screenshot analysis: {e}", flush=True)
+        return {
+            "action": "ok",
+            "reasoning": "",
+            "parental_reasoning": f"Error during analysis: {str(e)}"
+        }
+
 
 @app.route("/appeal", methods=["POST"])
 def submit_appeal():
@@ -772,7 +934,7 @@ def submit_appeal():
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
-            "reason": f"Appeal auto-approved: {decision.get('parental_reasoning')}",
+            "reason": "Appeal auto-approved",  # Fixed: Use consistent tag for filtering
             "reasoning": decision.get("reasoning"),
             "parental_reasoning": decision.get("parental_reasoning"),
         })
@@ -898,6 +1060,158 @@ def initialize_monitoring():
     return jsonify({"status": "success", "message": "Monitoring configuration initialized."})
 
 
+# Desktop monitoring endpoints
+@app.route("/desktop/screenshot", methods=["POST"])
+def analyze_desktop_app():
+    """Analyze desktop application screenshot"""
+    data = request.json
+    app_name = data.get("app_name", "")
+    window_title = data.get("window_title", "")
+    screenshot_base64 = data.get("screenshot", "")
+
+    if not app_name or not screenshot_base64:
+        return jsonify({"action": "ok", "reason": "Missing required data"}), 400
+
+    # Check if app is whitelisted
+    if is_app_whitelisted(app_name):
+        return jsonify({
+            "action": "ok",
+            "reason": "Application is whitelisted"
+        })
+
+    # Check if app is already blacklisted
+    if is_app_blacklisted(app_name):
+        return jsonify({
+            "action": "terminate",
+            "reason": "Application has been blocked by parental settings. Please wait for parental approval."
+        })
+
+    # Get monitoring config
+    config = get_monitoring_config()
+    monitoring_prompt = config.get("monitoring_prompt", "")
+
+    # Convert base64 to data URL for vision API
+    image_data_url = f"data:image/png;base64,{screenshot_base64}"
+
+    # Analyze screenshot with vision agent
+    result = asyncio.run(analyze_desktop_screenshot(
+        app_name, window_title, image_data_url, monitoring_prompt
+    ))
+
+    if result["action"] == "block":
+        # Generate unique image ID
+        image_id = str(uuid.uuid4())
+
+        # Create screenshots directory if it doesn't exist
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "screenshots")
+        os.makedirs(screenshots_dir, exist_ok=True)
+
+        # Save screenshot
+        screenshot_path = os.path.join(screenshots_dir, f"{image_id}.png")
+        try:
+            with open(screenshot_path, "wb") as f:
+                f.write(base64.b64decode(screenshot_base64))
+        except Exception as e:
+            print(f"Error saving screenshot: {e}")
+            screenshot_path = None
+
+        # Add to blacklist
+        add_to_desktop_blacklist(
+            app_name,
+            reason="AI Analysis",
+            screenshot_path=screenshot_path,
+            reasoning=result.get("reasoning"),
+            parental_reasoning=result.get("parental_reasoning")
+        )
+
+        return jsonify({
+            "action": "terminate",
+            "reason": result.get("reasoning", "This application may violate parental guidelines. Please wait for parental approval.")
+        })
+
+    return jsonify({
+        "action": "allow",
+        "reason": ""
+    })
+
+
+@app.route("/desktop/whitelist", methods=["GET"])
+def get_desktop_whitelist():
+    """Get all whitelisted desktop apps"""
+    items = list(whitelist_desktop_col.find({}, {"_id": 0}))
+    return jsonify(items)
+
+
+@app.route("/desktop/blacklist", methods=["GET"])
+def get_desktop_blacklist():
+    """Get all blacklisted desktop apps"""
+    items = list(blacklist_desktop_col.find({}, {"_id": 0}))
+    return jsonify(items)
+
+
+@app.route("/desktop/whitelist", methods=["POST"])
+def add_to_desktop_whitelist_endpoint():
+    """Add app to desktop whitelist"""
+    data = request.json
+    app_name = data.get("app_name", "").strip().lower()
+
+    if not app_name:
+        return jsonify({"ok": False, "error": "App name is required"}), 400
+
+    if add_to_desktop_whitelist(app_name, reason="Parent added"):
+        return jsonify({"ok": True, "message": f"Added {app_name} to whitelist"})
+    else:
+        return jsonify({"ok": False, "error": "App already in whitelist"}), 409
+
+
+@app.route("/desktop/blacklist/<path:app_name>", methods=["DELETE"])
+def remove_from_desktop_blacklist(app_name):
+    """Remove app from desktop blacklist (approve)"""
+    app_name = app_name.strip().lower()
+
+    # Get the entry to find screenshot path
+    entry = blacklist_desktop_col.find_one({"app": app_name})
+
+    # Delete the entry
+    result = blacklist_desktop_col.delete_one({"app": app_name})
+
+    if result.deleted_count > 0:
+        # Optionally delete the screenshot file
+        if entry and entry.get("screenshot_path"):
+            try:
+                if os.path.exists(entry["screenshot_path"]):
+                    os.remove(entry["screenshot_path"])
+            except Exception as e:
+                print(f"Error deleting screenshot: {e}")
+
+        return jsonify({"ok": True, "message": f"Approved {app_name}"})
+    else:
+        return jsonify({"ok": False, "error": "App not found in blacklist"}), 404
+
+
+@app.route("/desktop/screenshot/<image_id>", methods=["GET"])
+def get_screenshot(image_id):
+    """Get screenshot image by ID"""
+    screenshots_dir = os.path.join(os.path.dirname(__file__), "screenshots")
+    screenshot_path = os.path.join(screenshots_dir, f"{image_id}.png")
+
+    if not os.path.exists(screenshot_path):
+        return jsonify({"error": "Screenshot not found"}), 404
+
+    try:
+        with open(screenshot_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode()
+        return jsonify({"image": f"data:image/png;base64,{image_data}"})
+    except Exception as e:
+        return jsonify({"error": f"Error reading screenshot: {str(e)}"}), 500
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for desktop monitor"""
+    return jsonify({"status": "ok"})
+
+
 def main():
     """
     Entry point for the service. Validates configuration and starts the Flask app.
@@ -927,6 +1241,9 @@ def main():
     print("Initializing default monitoring configuration...")
     get_monitoring_config()
     print("Monitoring configuration initialized.")
+
+    # --- Initialize critical system apps whitelist ---
+    initialize_critical_system_apps()
 
     # --- Start Email Monitoring Service ---
     print("Starting email monitoring service...")
