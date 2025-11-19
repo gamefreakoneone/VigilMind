@@ -8,15 +8,36 @@ from io import BytesIO
 from PIL import ImageGrab
 import os
 import sys
+from win10toast import ToastNotifier
 
 API_URL = "http://localhost:5000"
 SCREENSHOT_INTERVAL = 120  # seconds (configurable via API)
+
+# Default whitelisted apps (commonly safe applications)
+DEFAULT_WHITELIST = [
+    'winword.exe',      # Microsoft Word
+    'excel.exe',        # Microsoft Excel
+    'powerpnt.exe',     # Microsoft PowerPoint
+    'onenote.exe',      # Microsoft OneNote
+    'notepad.exe',      # Notepad
+    'calc.exe',         # Calculator
+    'mspaint.exe',      # Paint
+    'explorer.exe',     # Windows Explorer
+    'code.exe',         # Visual Studio Code
+    'notepad++.exe',    # Notepad++
+    'spotify.exe',      # Spotify
+    'vlc.exe',          # VLC Media Player
+]
 
 class DesktopMonitor:
     def __init__(self):
         self.last_window = ""
         self.browser_processes = ['chrome.exe', 'firefox.exe', 'msedge.exe', 'brave.exe']
         self.running = True
+        self.toaster = ToastNotifier()
+        self.whitelist_cache = set(DEFAULT_WHITELIST)
+        self.blacklist_cache = set()
+        self.last_cache_update = 0
         
     def get_active_window(self):
         try:
@@ -37,8 +58,54 @@ class DesktopMonitor:
     
     def is_browser(self, process_name):
         return process_name.lower() in self.browser_processes
-    
-    def take_screenshot(self): #TODO: Save the screenshot for debugging
+
+    def update_whitelist_blacklist_cache(self):
+        """Update local cache of whitelisted and blacklisted apps from API"""
+        try:
+            # Update cache every 30 seconds
+            current_time = time.time()
+            if current_time - self.last_cache_update < 30:
+                return
+
+            # Fetch whitelist
+            response = requests.get(f"{API_URL}/desktop/whitelist", timeout=5)
+            if response.status_code == 200:
+                whitelist_data = response.json()
+                self.whitelist_cache = set(DEFAULT_WHITELIST)  # Start with defaults
+                for item in whitelist_data:
+                    self.whitelist_cache.add(item['app'].lower())
+
+            # Fetch blacklist
+            response = requests.get(f"{API_URL}/desktop/blacklist", timeout=5)
+            if response.status_code == 200:
+                blacklist_data = response.json()
+                self.blacklist_cache = set(item['app'].lower() for item in blacklist_data)
+
+            self.last_cache_update = current_time
+        except Exception as e:
+            print(f"Error updating whitelist/blacklist cache: {e}")
+
+    def is_whitelisted(self, process_name):
+        """Check if app is in whitelist"""
+        return process_name.lower() in self.whitelist_cache
+
+    def is_blacklisted(self, process_name):
+        """Check if app is in blacklist"""
+        return process_name.lower() in self.blacklist_cache
+
+    def show_notification(self, title, message):
+        """Show Windows notification"""
+        try:
+            self.toaster.show_toast(
+                title,
+                message,
+                duration=10,
+                threaded=True
+            )
+        except Exception as e:
+            print(f"Error showing notification: {e}")
+
+    def take_screenshot(self):
         try:
             screenshot = ImageGrab.grab()
             buffered = BytesIO()
@@ -94,64 +161,87 @@ class DesktopMonitor:
         """Main monitoring loop"""
         print("Desktop Monitor Started")
         print("=" * 50)
-        
+
         last_screenshot_time = 0
-        
+
         while self.running:
             try:
+                # Update whitelist/blacklist cache periodically
+                self.update_whitelist_blacklist_cache()
+
                 # Get config periodically
                 config = self.get_config_from_api()
-                
+
                 if not config.get('desktop_monitoring_enabled', True):
                     print("Desktop monitoring disabled, waiting...")
                     time.sleep(10)
                     continue
-                
+
                 # Get active window
                 window_info = self.get_active_window()
-                
+
                 if not window_info:
                     time.sleep(2)
                     continue
-                
+
                 process_name = window_info['process_name']
                 window_title = window_info['window_title']
-                
+
                 # Log window changes
                 current_window = f"{process_name}: {window_title}"
                 if current_window != self.last_window:
                     print(f"\n[{time.strftime('%H:%M:%S')}] Active: {current_window}")
                     self.last_window = current_window
-                
+
                 # Skip browsers (already monitored by extension)
                 if self.is_browser(process_name):
                     time.sleep(2)
                     continue
-                
-                # Take screenshot at intervals
+
+                # Check if app is blacklisted - terminate immediately
+                if self.is_blacklisted(process_name):
+                    print(f" {process_name} is blacklisted - terminating")
+                    self.terminate_app(window_info['pid'])
+                    self.show_notification(
+                        "Parental Control Alert",
+                        "You might have violated the parental guidelines. Please wait for parental approval."
+                    )
+                    time.sleep(2)
+                    continue
+
+                # Skip whitelisted apps (no need to screenshot)
+                if self.is_whitelisted(process_name):
+                    time.sleep(2)
+                    continue
+
+                # Take screenshot at intervals for non-whitelisted apps
                 current_time = time.time()
                 screenshot_interval = config.get('screenshot_interval', SCREENSHOT_INTERVAL)
-                
+
                 if current_time - last_screenshot_time >= screenshot_interval:
                     print(f" Taking screenshot of {process_name}...")
-                    
+
                     screenshot_base64 = self.take_screenshot()
-                    
+
                     if screenshot_base64:
                         # Send to API
                         result = self.send_to_api(window_info, screenshot_base64)
-                        
+
                         if result:
                             if result.get('action') == 'terminate':
                                 print(f" Terminating {process_name}: {result.get('reason')}")
                                 self.terminate_app(window_info['pid'])
+                                self.show_notification(
+                                    "Parental Control Alert",
+                                    "You might have violated the parental guidelines. Please wait for parental approval."
+                                )
                             elif result.get('action') == 'allow':
                                 print(f" {process_name} - Activity allowed")
-                    
+
                     last_screenshot_time = current_time
-                
+
                 time.sleep(2)  # Check window changes frequently
-                
+
             except KeyboardInterrupt:
                 print("\n\n  Monitoring stopped by user")
                 self.running = False

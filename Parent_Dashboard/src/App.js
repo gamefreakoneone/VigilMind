@@ -21,6 +21,10 @@ function App() {
   const [existingWhitelist, setExistingWhitelist] = useState([]);
   const [existingBlacklist, setExistingBlacklist] = useState([]);
 
+  // Desktop app lists
+  const [blacklistedDesktopApps, setBlacklistedDesktopApps] = useState([]);
+  const [whitelistedDesktopApps, setWhitelistedDesktopApps] = useState([]);
+
   // Pending approvals
   const [pendingApprovals, setPendingApprovals] = useState([]);
 
@@ -38,15 +42,19 @@ function App() {
   useEffect(() => {
     const refreshInterval = setInterval(async () => {
       try {
-        const [whitelistRes, blacklistRes, approvalsRes] = await Promise.all([
+        const [whitelistRes, blacklistRes, approvalsRes, desktopBlacklistRes, desktopWhitelistRes] = await Promise.all([
           axios.get(`${API_BASE}/whitelist`),
           axios.get(`${API_BASE}/blacklist`),
           axios.get(`${API_BASE}/pending-approvals`),
+          axios.get(`${API_BASE}/desktop/blacklist`),
+          axios.get(`${API_BASE}/desktop/whitelist`),
         ]);
 
         setExistingWhitelist(whitelistRes.data || []);
         setExistingBlacklist(blacklistRes.data || []);
         setPendingApprovals(approvalsRes.data || []);
+        setBlacklistedDesktopApps(desktopBlacklistRes.data || []);
+        setWhitelistedDesktopApps(desktopWhitelistRes.data || []);
       } catch (error) {
         console.error('Error refreshing data:', error);
       }
@@ -59,11 +67,13 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [configRes, whitelistRes, blacklistRes, approvalsRes] = await Promise.all([
+      const [configRes, whitelistRes, blacklistRes, approvalsRes, desktopBlacklistRes, desktopWhitelistRes] = await Promise.all([
         axios.get(`${API_BASE}/config`),
         axios.get(`${API_BASE}/whitelist`),
         axios.get(`${API_BASE}/blacklist`),
         axios.get(`${API_BASE}/pending-approvals`),
+        axios.get(`${API_BASE}/desktop/blacklist`),
+        axios.get(`${API_BASE}/desktop/whitelist`),
       ]);
 
       setConfig({
@@ -75,6 +85,8 @@ function App() {
       setExistingWhitelist(whitelistRes.data || []);
       setExistingBlacklist(blacklistRes.data || []);
       setPendingApprovals(approvalsRes.data || []);
+      setBlacklistedDesktopApps(desktopBlacklistRes.data || []);
+      setWhitelistedDesktopApps(desktopWhitelistRes.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       showMessage('Error loading dashboard data', 'error');
@@ -173,6 +185,17 @@ function App() {
     } catch (error) {
       console.error('Error denying appeal:', error);
       showMessage('Error denying appeal', 'error');
+    }
+  };
+
+  const handleApproveDesktopApp = async (app_name) => {
+    try {
+      await axios.delete(`${API_BASE}/desktop/blacklist/${encodeURIComponent(app_name)}`);
+      showMessage(`Approved ${app_name}`, 'success');
+      await loadData();
+    } catch (error) {
+      console.error('Error approving desktop app:', error);
+      showMessage('Error approving desktop app', 'error');
     }
   };
 
@@ -407,6 +430,75 @@ function App() {
                     >
                       Unblock
                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Blacklisted Desktop Applications */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Blacklisted Desktop Applications</h2>
+              <span className="badge pending">{blacklistedDesktopApps.length}</span>
+            </div>
+
+            {blacklistedDesktopApps.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon">💻</div>
+                <div className="empty-state-text">No blacklisted applications</div>
+                <div className="empty-state-subtext">
+                  Blocked desktop apps will appear here for your review
+                </div>
+              </div>
+            ) : (
+              <div className="list-container">
+                {blacklistedDesktopApps.map((item, index) => (
+                  <div key={index} className="approval-item">
+                    <div className="approval-header">
+                      <div className="approval-link" style={{ textTransform: 'uppercase' }}>
+                        {item.app}
+                      </div>
+                      <div className="approval-time">
+                        {formatTimestamp(item.added_at)}
+                      </div>
+                    </div>
+
+                    {item.parental_reasoning && (
+                      <div className="approval-reason">
+                        {item.parental_reasoning}
+                      </div>
+                    )}
+
+                    {item.screenshot_path && (
+                      <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                        <img
+                          src={`${API_BASE}/desktop/screenshot/${item.screenshot_path.split('/').pop().replace('.png', '')}`}
+                          alt="Screenshot"
+                          style={{
+                            maxWidth: '100%',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            window.open(
+                              `${API_BASE}/desktop/screenshot/${item.screenshot_path.split('/').pop().replace('.png', '')}`,
+                              '_blank'
+                            );
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="approval-actions">
+                      <button
+                        className="btn btn-success btn-small"
+                        onClick={() => handleApproveDesktopApp(item.app)}
+                      >
+                        ✓ Approve & Unblock
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
