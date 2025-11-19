@@ -694,7 +694,6 @@ class Desktop_Analysis_JSON(BaseModel):
     action: str  # 'ok' or 'block'
     reasoning: str  # Vague, child-safe explanation (empty if ok)
     parental_reasoning: str  # Detailed explanation for parents
-    image_id: str  # Screenshot identifier (empty if ok)
 
 
 desktop_monitor_agent = Agent(
@@ -763,8 +762,7 @@ async def analyze_desktop_screenshot(app_name, window_title, image_data_url, mon
         return {
             "action": "ok",
             "reasoning": "",
-            "parental_reasoning": f"Error during analysis: {str(e)}",
-            "image_id": ""
+            "parental_reasoning": f"Error during analysis: {str(e)}"
         }
 
 

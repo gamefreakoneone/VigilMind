@@ -86,7 +86,6 @@ Response format:
 {{
     "action": "<'ok' or 'block'>",
     "reasoning": "<Brief child-safe explanation if blocking, empty string if ok. Maximum 30 words.>",
-    "parental_reasoning": "<Detailed explanation for parents about the application usage observed. Maximum 100 words.>",
-    "image_id": "<unique identifier for this screenshot if blocking, empty string if ok>"
+    "parental_reasoning": "<Detailed explanation for parents about the application usage observed. Maximum 100 words.>"
 }}
 """
