@@ -621,12 +621,14 @@ def add_to_whitelist_endpoint():
 
 @app.route("/whitelist/<path:domain>", methods=["DELETE"])
 def remove_from_whitelist(domain):
-    """Remove domain from whitelist"""
+    """Remove domain from whitelist and add to blacklist"""
     domain = domain.strip().lower()
     result = whitelist_col.delete_one({"link": domain})
 
     if result.deleted_count > 0:
-        return jsonify({"ok": True, "message": f"Removed {domain} from whitelist"})
+        # Add to blacklist when parent removes from whitelist
+        add_to_blacklist(domain, reason="Parent added", parental_reasoning="Parent manually removed this website from whitelist")
+        return jsonify({"ok": True, "message": f"Removed {domain} from whitelist and added to blacklist"})
     else:
         return jsonify({"ok": False, "error": "Domain not found in whitelist"}), 404
 
@@ -648,12 +650,14 @@ def add_to_blacklist_endpoint():
 
 @app.route("/blacklist/<path:domain>", methods=["DELETE"])
 def remove_from_blacklist(domain):
-    """Remove domain from blacklist"""
+    """Remove domain from blacklist and add to whitelist"""
     domain = domain.strip().lower()
     result = blacklist_col.delete_one({"link": domain})
 
     if result.deleted_count > 0:
-        return jsonify({"ok": True, "message": f"Removed {domain} from blacklist"})
+        # Add to whitelist when parent unblocks
+        add_to_whitelist(domain, reason="Parent approved", parental_reasoning="Parent manually unblocked this website")
+        return jsonify({"ok": True, "message": f"Removed {domain} from blacklist and added to whitelist"})
     else:
         return jsonify({"ok": False, "error": "Domain not found in blacklist"}), 404
 
@@ -1166,7 +1170,7 @@ def add_to_desktop_whitelist_endpoint():
 
 @app.route("/desktop/blacklist/<path:app_name>", methods=["DELETE"])
 def remove_from_desktop_blacklist(app_name):
-    """Remove app from desktop blacklist (approve)"""
+    """Remove app from desktop blacklist and add to whitelist (approve)"""
     app_name = app_name.strip().lower()
 
     # Get the entry to find screenshot path
@@ -1176,6 +1180,9 @@ def remove_from_desktop_blacklist(app_name):
     result = blacklist_desktop_col.delete_one({"app": app_name})
 
     if result.deleted_count > 0:
+        # Add to whitelist when parent approves
+        add_to_desktop_whitelist(app_name, reason="Parent approved")
+
         # Optionally delete the screenshot file
         if entry and entry.get("screenshot_path"):
             try:
@@ -1184,7 +1191,7 @@ def remove_from_desktop_blacklist(app_name):
             except Exception as e:
                 print(f"Error deleting screenshot: {e}")
 
-        return jsonify({"ok": True, "message": f"Approved {app_name}"})
+        return jsonify({"ok": True, "message": f"Approved {app_name} and added to whitelist"})
     else:
         return jsonify({"ok": False, "error": "App not found in blacklist"}), 404
 
