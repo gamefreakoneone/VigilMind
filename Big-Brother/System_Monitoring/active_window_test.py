@@ -11,7 +11,7 @@ import sys
 from win10toast import ToastNotifier
 
 API_URL = "http://localhost:5000"
-SCREENSHOT_INTERVAL = 120  # seconds (configurable via API)
+SCREENSHOT_INTERVAL = 30  # seconds (configurable via API)
 
 # Default whitelisted apps (commonly safe applications)
 DEFAULT_WHITELIST = [
@@ -32,7 +32,7 @@ DEFAULT_WHITELIST = [
 class DesktopMonitor:
     def __init__(self):
         self.last_window = ""
-        self.browser_processes = ['chrome.exe', 'firefox.exe', 'msedge.exe', 'brave.exe']
+        self.browser_processes = ['chrome.exe']
         self.running = True
         self.toaster = ToastNotifier()
         self.whitelist_cache = set(DEFAULT_WHITELIST)

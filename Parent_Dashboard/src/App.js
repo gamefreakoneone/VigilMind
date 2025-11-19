@@ -58,7 +58,7 @@ function App() {
       } catch (error) {
         console.error('Error refreshing data:', error);
       }
-    }, 300000000); // Refresh every 30 seconds
+    }, 120000); // Refresh every 2 minutes
 
     // Cleanup interval on component unmount
     return () => clearInterval(refreshInterval);

@@ -31,6 +31,9 @@ After which you can take the call whether to approve or block the website. The o
     "reasoning": "<Vague, child-safe explanation that doesn't reveal parental guidelines. Maximum 30 words.>",
     "parental_reasoning": "<Detailed explanation for parents about why this decision was made based on their specific guidelines. Maximum 80 words.>",
 }}
+
+DO NOT BE SUPER AGGRESSIVE IN YOUR DECISIONS. Use your common sense to make decisions. For example, fi the parent says no adult content, dont block google just because of the potential that the
+ child can search for adult content. Similarly, if the parent says no streaming services, dont block youtube just because of the potential that the child can watch streaming services. Be smart about your decision, and stick to the guidelines provided by the parent 
 """
 
 
