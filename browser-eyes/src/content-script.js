@@ -21,7 +21,7 @@ function showLoadingScreen() {
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(255, 255, 255, 0.98);
+        background: #F0F9FF;
         z-index: 2147483647;
         display: flex;
         align-items: center;
@@ -30,12 +30,16 @@ function showLoadingScreen() {
       }
       .loading-content {
         text-align: center;
+        background: white;
+        padding: 40px;
+        border-radius: 24px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
       }
       .spinner {
         width: 50px;
         height: 50px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #667eea;
+        border: 4px solid #E1E8ED;
+        border-top: 4px solid #3B82F6;
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin: 0 auto 20px;
@@ -46,7 +50,7 @@ function showLoadingScreen() {
       }
       .loading-text {
         font-size: 18px;
-        color: #333;
+        color: #334155;
         font-weight: 500;
       }
     </style>
@@ -131,115 +135,155 @@ function showBlockPageWithAppeal(reason, appealsUsed = 0) {
           box-sizing: border-box;
         }
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          background: #F0F9FF;
           display: flex;
           align-items: center;
           justify-content: center;
           min-height: 100vh;
-          color: white;
+          color: #334155;
           padding: 20px;
         }
         .container {
           text-align: center;
-          padding: 40px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 20px;
-          backdrop-filter: blur(10px);
+          padding: 50px;
+          background: white;
+          border-radius: 24px;
           max-width: 600px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+          width: 100%;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+          border: 1px solid #E2E8F0;
         }
         .icon {
-          font-size: 80px;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
         h1 {
-          margin: 0 0 20px 0;
-          font-size: 32px;
+          margin: 0 0 16px 0;
+          font-size: 28px;
+          color: #1E293B;
+          font-weight: 700;
         }
         p {
-          font-size: 18px;
-          margin: 10px 0;
-          opacity: 0.9;
+          font-size: 16px;
+          margin: 8px 0;
+          color: #64748B;
+          line-height: 1.5;
         }
         .reason {
-          background: rgba(255, 255, 255, 0.2);
-          padding: 15px;
-          border-radius: 10px;
-          margin: 20px 0;
-          font-size: 16px;
+          background: #EFF6FF;
+          border: 1px solid #DBEAFE;
+          color: #1E40AF;
+          padding: 16px;
+          border-radius: 12px;
+          margin: 24px 0;
+          font-size: 15px;
+          text-align: left;
         }
         .appeal-section {
-          margin-top: 30px;
-          padding-top: 30px;
-          border-top: 2px solid rgba(255, 255, 255, 0.3);
+          margin-top: 32px;
+          padding-top: 32px;
+          border-top: 1px solid #E2E8F0;
         }
         .appeal-section h2 {
-          font-size: 20px;
-          margin-bottom: 15px;
+          font-size: 18px;
+          margin-bottom: 12px;
+          color: #334155;
         }
         textarea {
           width: 100%;
-          padding: 15px;
-          border: none;
-          border-radius: 10px;
-          font-size: 16px;
+          padding: 16px;
+          border: 2px solid #E2E8F0;
+          border-radius: 12px;
+          font-size: 15px;
           font-family: inherit;
           resize: vertical;
-          min-height: 100px;
-          margin-bottom: 15px;
+          min-height: 120px;
+          margin-bottom: 20px;
+          transition: border-color 0.2s;
+          outline: none;
+        }
+        textarea:focus {
+          border-color: #3B82F6;
         }
         button {
-          background: white;
-          color: #667eea;
+          background: #3B82F6;
+          color: white;
           border: none;
-          padding: 15px 30px;
+          padding: 14px 32px;
           font-size: 16px;
-          border-radius: 25px;
+          border-radius: 50px;
           cursor: pointer;
-          font-weight: bold;
-          margin: 5px;
-          transition: transform 0.2s;
+          font-weight: 600;
+          margin: 8px;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
         }
         button:hover {
-          transform: scale(1.05);
+          background: #2563EB;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35);
+        }
+        button:disabled {
+          background: #94A3B8;
+          transform: none;
+          cursor: not-allowed;
         }
         button.secondary {
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
+          background: white;
+          color: #64748B;
+          border: 2px solid #E2E8F0;
+          box-shadow: none;
+        }
+        button.secondary:hover {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
+          color: #334155;
         }
         .status-message {
-          margin-top: 20px;
-          padding: 15px;
-          border-radius: 10px;
+          margin-top: 24px;
+          padding: 16px;
+          border-radius: 12px;
           display: none;
+          font-size: 15px;
         }
         .status-message.show {
           display: block;
         }
         .status-message.success {
-          background: rgba(76, 175, 80, 0.3);
+          background: #DCFCE7;
+          color: #166534;
+          border: 1px solid #BBF7D0;
         }
         .status-message.pending {
-          background: rgba(255, 152, 0, 0.3);
+          background: #FEF3C7;
+          color: #92400E;
+          border: 1px solid #FDE68A;
         }
       </style>
     </head>
     <body>
       <div class="container">
-        <div class="icon">🛡️</div>
-        <h1>Content Blocked</h1>
-        <p>This website has been blocked by your parental controls.</p>
+        <div class="icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" fill="#3B82F6"/>
+            <path d="M12 8V13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 16H12.01" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1>Page Blocked</h1>
+        <p>This website is not available right now.</p>
         <div class="reason">
-          <strong>Reason:</strong> ${reason}
+          <strong>Why?</strong> ${reason}
         </div>
 
         <div class="appeal-section" id="appeal-section">
-          <h2>Need this website?</h2>
-          <p style="font-size: 16px; opacity: 0.9;">Explain why you need access and it will be reviewed</p>
-          <textarea id="appeal-reason" placeholder="Example: I need this website for my science homework assignment on climate change"></textarea>
-          <button id="submit-btn">Submit Appeal</button>
-          <button id="back-btn" class="secondary">Go Back</button>
+          <h2>Need access for something important?</h2>
+          <p style="font-size: 14px; margin-bottom: 16px;">Tell us why you need to visit this page.</p>
+          <textarea id="appeal-reason" placeholder="I need this for my homework because..."></textarea>
+          <div>
+            <button id="submit-btn">Ask for Permission</button>
+            <button id="back-btn" class="secondary">Go Back</button>
+          </div>
         </div>
 
         <div id="status-message" class="status-message"></div>
@@ -402,72 +446,91 @@ function blockPage(reason) {
     <head>
       <title>Content Blocked</title>
       <style>
-        body {
+        * {
           margin: 0;
           padding: 0;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          box-sizing: border-box;
+        }
+        body {
+          font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          background: #F0F9FF;
           display: flex;
           align-items: center;
           justify-content: center;
           min-height: 100vh;
-          color: white;
+          color: #334155;
+          padding: 20px;
         }
         .container {
           text-align: center;
-          padding: 40px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 20px;
-          backdrop-filter: blur(10px);
+          padding: 50px;
+          background: white;
+          border-radius: 24px;
           max-width: 600px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+          width: 100%;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+          border: 1px solid #E2E8F0;
         }
         .icon {
-          font-size: 80px;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
         h1 {
-          margin: 0 0 20px 0;
-          font-size: 32px;
+          margin: 0 0 16px 0;
+          font-size: 28px;
+          color: #1E293B;
+          font-weight: 700;
         }
         p {
-          font-size: 18px;
-          margin: 10px 0;
-          opacity: 0.9;
+          font-size: 16px;
+          margin: 8px 0;
+          color: #64748B;
+          line-height: 1.5;
         }
         .reason {
-          background: rgba(255, 255, 255, 0.2);
-          padding: 15px;
-          border-radius: 10px;
-          margin: 20px 0;
-          font-size: 16px;
+          background: #EFF6FF;
+          border: 1px solid #DBEAFE;
+          color: #1E40AF;
+          padding: 16px;
+          border-radius: 12px;
+          margin: 24px 0;
+          font-size: 15px;
+          text-align: left;
         }
         button {
-          background: white;
-          color: #667eea;
+          background: #3B82F6;
+          color: white;
           border: none;
-          padding: 15px 30px;
+          padding: 14px 32px;
           font-size: 16px;
-          border-radius: 25px;
+          border-radius: 50px;
           cursor: pointer;
-          font-weight: bold;
-          margin-top: 20px;
-          transition: transform 0.2s;
+          font-weight: 600;
+          margin-top: 24px;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
         }
         button:hover {
-          transform: scale(1.05);
+          background: #2563EB;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35);
         }
       </style>
     </head>
     <body>
       <div class="container">
-        <div class="icon">🛡️</div>
-        <h1>Content Blocked</h1>
-        <p>This website has been blocked by your parental controls.</p>
-        <div class="reason">
-          <strong>Reason:</strong> ${reason}
+        <div class="icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" fill="#3B82F6"/>
+            <path d="M12 8V13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 16H12.01" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </div>
-        <p>If you believe this is a mistake, please talk to your parent or guardian.</p>
+        <h1>Page Blocked</h1>
+        <p>This website is not available right now.</p>
+        <div class="reason">
+          <strong>Why?</strong> ${reason}
+        </div>
+        <p style="margin-top: 24px; font-size: 14px;">If you believe this is a mistake, please talk to your parent or guardian.</p>
         <button onclick="history.back()">Go Back</button>
       </div>
     </body>
