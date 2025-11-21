@@ -290,8 +290,10 @@ def process_parent_response(message: Dict):
             return
 
         # Check if already processed
-        if approval_request.get("status") != "awaiting_parent":
-            print(f"⚠️ Approval {approval_id} already processed")
+        # Allow processing for both "awaiting_parent" and "auto_approved" statuses
+        allowed_statuses = ["awaiting_parent", "auto_approved"]
+        if approval_request.get("status") not in allowed_statuses:
+            print(f"⚠️ Approval {approval_id} already processed (status: {approval_request.get('status')})")
             return
 
         # Parse parent's response using AI agent
