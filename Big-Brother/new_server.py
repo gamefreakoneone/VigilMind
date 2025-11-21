@@ -935,6 +935,19 @@ def submit_appeal():
 
     if decision["action"] == "approve":
         # AI approved the appeal
+        # Create a pending approval record so parent can respond to reverse the decision
+        approval_id = f"approval_{int(time.time())}"
+        pending_approvals_col.insert_one({
+            "approval_id": approval_id,
+            "appeal_id": appeal_id,
+            "link": link,
+            "domain": domain,
+            "child_reason": appeal_reason,
+            "timestamp": datetime.now(),
+            "status": "auto_approved",  # Different status to track auto-approvals
+            "ai_decision": decision.get("parental_reasoning"),
+        })
+
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
@@ -953,7 +966,7 @@ def submit_appeal():
             }},
         )
 
-        notify_parent_appeal_approved(link, appeal_reason, decision.get("parental_reasoning"))
+        notify_parent_appeal_approved(approval_id, link, appeal_reason, decision.get("parental_reasoning"))
 
         return jsonify({
             "ok": True,
