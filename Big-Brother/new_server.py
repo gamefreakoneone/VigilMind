@@ -102,6 +102,8 @@ CRITICAL_SYSTEM_APPS = [
     'system',           # System process
     'smss.exe',         # Session Manager Subsystem
     'wininit.exe',      # Windows Start-Up Application
+    'olk.exe',          # Outlook - added to prevent accidental blocking of email client
+    'zoom.exe'
 ]
 
 
@@ -181,7 +183,7 @@ def get_monitoring_config():
             "monitoring_prompt": "Block google  only.",
             "agent_can_auto_approve": False,
             "desktop_monitoring_enabled": True,
-            "screenshot_interval": 120,
+            "screenshot_interval": 15,
             "blocked_apps": ["steam.exe"],
         }
         config_col.insert_one(config)
@@ -571,7 +573,7 @@ def update_config():
         "monitoring_prompt": data.get("monitoring_prompt"),
         "agent_can_auto_approve": data.get("agent_can_auto_approve", False),
         "desktop_monitoring_enabled": data.get("desktop_monitoring_enabled", True),
-        "screenshot_interval": data.get("screenshot_interval", 120),
+        "screenshot_interval": data.get("screenshot_interval", 15),
         "blocked_apps": data.get("blocked_apps", []),
     }
 
@@ -935,6 +937,19 @@ def submit_appeal():
 
     if decision["action"] == "approve":
         # AI approved the appeal
+        # Create a pending approval record so parent can respond to reverse the decision
+        approval_id = f"approval_{int(time.time())}"
+        pending_approvals_col.insert_one({
+            "approval_id": approval_id,
+            "appeal_id": appeal_id,
+            "link": link,
+            "domain": domain,
+            "child_reason": appeal_reason,
+            "timestamp": datetime.now(),
+            "status": "auto_approved",  # Different status to track auto-approvals
+            "ai_decision": decision.get("parental_reasoning"),
+        })
+
         whitelist_col.insert_one({
             "link": link,
             "added_at": datetime.now(),
@@ -953,7 +968,7 @@ def submit_appeal():
             }},
         )
 
-        notify_parent_appeal_approved(link, appeal_reason, decision.get("parental_reasoning"))
+        notify_parent_appeal_approved(approval_id, link, appeal_reason, decision.get("parental_reasoning"))
 
         return jsonify({
             "ok": True,
@@ -1048,7 +1063,7 @@ def initialize_monitoring():
     agent_can_auto_approve = data.get("agent_can_auto_approve", False)
     desktop_monitoring_enabled = data.get("desktop_monitoring_enabled", True)
     # screenshot_interval = data.get("screenshot_interval", 120) # I dont think we should expose this to the parent either. Set it up manually
-    screenshot_interval = 120
+    screenshot_interval = 15
     blocked_apps = data.get("blocked_apps", []) # Should we even expose this to the parent and just let agent decide to ? 
 
     new_config = {
@@ -1254,7 +1269,7 @@ def main():
 
     # --- Start Email Monitoring Service ---
     print("Starting email monitoring service...")
-    start_email_monitoring(check_interval=60)  # Check inbox every 60 seconds
+    start_email_monitoring(check_interval=10)  # Check inbox every 60 seconds
     print("Email monitoring service initialized.")
 
     # --- Start Flask app ---

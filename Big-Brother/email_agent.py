@@ -105,11 +105,12 @@ async def parse_parent_response(email_subject: str, email_body: str) -> Optional
 
 # ==================== EMAIL SENDING FUNCTIONS ====================
 
-def notify_parent_appeal_approved(link: str, appeal_reason: str, decision_reason: str):
+def notify_parent_appeal_approved(approval_id: str, link: str, appeal_reason: str, decision_reason: str):
     """
     Send notification to parent when appeal is auto-approved
 
     Args:
+        approval_id: Unique ID for this approval (allows parent to respond and reverse)
         link: The URL that was approved
         appeal_reason: Child's reason for appealing
         decision_reason: AI agent's reason for auto-approval
@@ -122,7 +123,7 @@ def notify_parent_appeal_approved(link: str, appeal_reason: str, decision_reason
 
         gmail = get_gmail_agent()
 
-        subject = f"VigilMind: Appeal Auto-Approved for {link}"
+        subject = f"VigilMind: Appeal Auto-Approved [{approval_id}]"
 
         body = f"""
         <html>
@@ -139,7 +140,17 @@ def notify_parent_appeal_approved(link: str, appeal_reason: str, decision_reason
 
             <p>The website has been automatically whitelisted and your child can now access it.</p>
 
-            <p style="color: #666; font-size: 12px; margin-top: 30px;">
+            <div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #FF9800;">
+                <h3 style="color: #F57C00; margin-top: 0;">Don't Agree with This Decision?</h3>
+                <p><strong>You can reverse this by simply replying to this email with:</strong></p>
+                <ul>
+                    <li><strong>"BLOCK"</strong> or <strong>"DENY"</strong> - to block this website again</li>
+                </ul>
+                <p style="font-size: 12px; color: #666;">Our AI agent will automatically process your response and block the website immediately.</p>
+            </div>
+
+            <p style="color: #666; font-size: 11px; margin-top: 30px;">
+                <strong>Reference ID:</strong> {approval_id}<br>
                 This is an automated notification from VigilMind Parental Control System.
             </p>
         </body>
@@ -279,8 +290,10 @@ def process_parent_response(message: Dict):
             return
 
         # Check if already processed
-        if approval_request.get("status") != "awaiting_parent":
-            print(f"⚠️ Approval {approval_id} already processed")
+        # Allow processing for both "awaiting_parent" and "auto_approved" statuses
+        allowed_statuses = ["awaiting_parent", "auto_approved"]
+        if approval_request.get("status") not in allowed_statuses:
+            print(f"⚠️ Approval {approval_id} already processed (status: {approval_request.get('status')})")
             return
 
         # Parse parent's response using AI agent
@@ -330,6 +343,22 @@ def process_parent_response(message: Dict):
             send_parent_confirmation(approval_id, link, "approved")
 
         else:  # deny
+            # Check if this was an auto-approved appeal that parent wants to reverse
+            was_reversed = False
+            if approval_request.get("status") == "auto_approved":
+                # Parent is reversing an auto-approval - remove from whitelist and add to blacklist
+                whitelist_col.delete_one({"link": link})
+                blacklist_col.insert_one({
+                    "link": link,
+                    "added_at": datetime.now(),
+                    "reason": "Parent blocked via email",
+                    "parental_reasoning": f"Parent reversed AI auto-approval: {parsed_response.reasoning}"
+                })
+                print(f"✅ Parent REVERSED auto-approval for {link} - Removed from whitelist and added to blacklist")
+                was_reversed = True
+            else:
+                print(f"✅ Parent DENIED {link} - Keeping blocked")
+
             # Update pending approval status
             pending_approvals_col.update_one(
                 {"approval_id": approval_id},
@@ -347,10 +376,8 @@ def process_parent_response(message: Dict):
                     {"$set": {"status": "parent_denied"}}
                 )
 
-            print(f"✅ Parent DENIED {link} - Keeping blocked")
-
             # Send confirmation email
-            send_parent_confirmation(approval_id, link, "denied")
+            send_parent_confirmation(approval_id, link, "denied", was_reversed=was_reversed)
 
         # Mark email as read
         gmail = get_gmail_agent()
@@ -362,7 +389,7 @@ def process_parent_response(message: Dict):
         traceback.print_exc()
 
 
-def send_parent_confirmation(approval_id: str, link: str, decision: str):
+def send_parent_confirmation(approval_id: str, link: str, decision: str, was_reversed: bool = False):
     """Send confirmation email to parent after processing their response"""
     try:
         parent_email = get_parent_email()
@@ -377,10 +404,16 @@ def send_parent_confirmation(approval_id: str, link: str, decision: str):
             status_text = "APPROVED"
             message_text = f"The website <strong>{link}</strong> has been whitelisted and your child can now access it."
         else:
-            subject = f"🚫 Confirmed: Website Denied [{approval_id}]"
-            color = "#F44336"
-            status_text = "DENIED"
-            message_text = f"The website <strong>{link}</strong> will remain blocked."
+            if was_reversed:
+                subject = f"🚫 Confirmed: Auto-Approval Reversed [{approval_id}]"
+                color = "#F44336"
+                status_text = "BLOCKED"
+                message_text = f"The website <strong>{link}</strong> has been removed from the whitelist and blocked. Your child will no longer have access to it."
+            else:
+                subject = f"🚫 Confirmed: Website Denied [{approval_id}]"
+                color = "#F44336"
+                status_text = "DENIED"
+                message_text = f"The website <strong>{link}</strong> will remain blocked."
 
         body = f"""
         <html>
@@ -410,7 +443,7 @@ def send_parent_confirmation(approval_id: str, link: str, decision: str):
         print(f"Error sending confirmation email: {e}")
 
 
-def email_monitoring_loop(check_interval: int = 60):
+def email_monitoring_loop(check_interval: int = 10):
     """
     Background loop that monitors inbox for parent responses
 
@@ -466,7 +499,7 @@ def email_monitoring_loop(check_interval: int = 60):
     print("📧 Email monitoring stopped")
 
 
-def start_email_monitoring(check_interval: int = 60):
+def start_email_monitoring(check_interval: int = 10):
     """
     Start the background email monitoring service
 
