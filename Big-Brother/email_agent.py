@@ -443,7 +443,7 @@ def send_parent_confirmation(approval_id: str, link: str, decision: str, was_rev
         print(f"Error sending confirmation email: {e}")
 
 
-def email_monitoring_loop(check_interval: int = 60):
+def email_monitoring_loop(check_interval: int = 10):
     """
     Background loop that monitors inbox for parent responses
 
@@ -499,7 +499,7 @@ def email_monitoring_loop(check_interval: int = 60):
     print("📧 Email monitoring stopped")
 
 
-def start_email_monitoring(check_interval: int = 60):
+def start_email_monitoring(check_interval: int = 10):
     """
     Start the background email monitoring service
 

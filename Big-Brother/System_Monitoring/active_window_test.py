@@ -27,6 +27,7 @@ DEFAULT_WHITELIST = [
     'notepad++.exe',    # Notepad++
     'spotify.exe',      # Spotify
     'vlc.exe',          # VLC Media Player
+    'olk.exe'           # Outlook
 ]
 
 class DesktopMonitor:

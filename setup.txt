@@ -1,7 +1,0 @@
-for Parent_dashboard
-npm install
-npm start
-
-For browser-eyes
-npm run build
-refresh the extension
